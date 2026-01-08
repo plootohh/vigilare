@@ -67,8 +67,6 @@ A standalone service that bridges the gap between raw storage and the search ind
 
 ## Directory Structure
 
-## Directory Structure
-
 ```text
 vigilare/
 ├── app/                  # Web Interface Logic
