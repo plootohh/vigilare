@@ -13,7 +13,7 @@ __   _(_) __ _(_) | __ _ _ __ ___
          
 **License: GNU AGPLv3**
 
-**Status: Active Development**
+**Status: Alpha / Active Development**
 
 ---
 
@@ -28,9 +28,9 @@ The source code governing result ranking is fully open-source. This ensures the 
 
 ### 2. Zero-Retention Architecture
 Privacy is implemented at the architectural level rather than as a user setting. The system architecture precludes the creation of user profiles, thus providing:
-    - No IP Address Logging
-    - No Persistent Cookies
-    - No Search History Logging or Retention
+* No IP Address Logging
+* No Persistent Cookies
+* No Search History Logging or Retention
 
 ### 3. Unrestricted Access
 The indexing crawler operates without geographic bias. Content is indexed based on availability rather than regional regulatory compliance, ensuring the preservation of information often targeted for censorship or removal.
@@ -39,23 +39,33 @@ The indexing crawler operates without geographic bias. Content is indexed based 
 
 ## Technical Architecture
 
-The system utilises a modular, micro-service style architecture designed for high throughput on consumer hardware.
+The system utilises a concurrent, high-throughput pipeline designed to run efficiently on consumer hardware without the overhead of enterprise clusters.
 
-### 1. Crawler Engine (`/crawler`)
-The core crawler (`bot.py`) is an asynchronous, polite web crawler. 
-* **Duplicate Detection:** Implements Bloom Filters to check visited URLs in constant time with minimal memory footprint, avoiding expensive database lookups for every discovered link.
-* **State Management:** The crawler state is persisted to disk, allowing operations to pause and resume without data loss.
+### 1. Concurrent Crawler Engine (`/crawler`)
+The core spider (`bot.py`) is a multi-threaded, polite web crawler.
+* **Threaded Dispatch:** Uses a pool of worker threads (Fetchers & Parsers) to handle network I/O and HTML parsing in parallel.
+* **Domain Governance:** Enforces strict per-domain rate limiting and politeness policies to prevent accidentally DoS-ing target sites.
+* **Bloom Filters:** Uses probabilistic data structures for O(1) duplicate detection, handling millions of URLs with minimal resource usage.
 
-### 2. Storage (`/data`)
-Data persistence allows for separation between the crawling and serving logic.
-* **Database:** Uses SQLite with WAL (Write-Ahead Logging) enabled to handle concurrent reads (search queries) and writes (indexing) without locking the database.
-* **File Structure:** All persistent state, including the databases, inverted index, Bloom filters, and logs, are isolated in the `data/` directory for easy backup and migration.
+### 2. Split-Storage Architecture (`/data`)
+To overcome SQLite's write-locking limitations, the system separates concerns into three distinct databases:
+1.  **Crawl DB:** Stores the Frontier (queue) and metadata. Optimised for high-speed writes.
+2.  **Storage DB:** Stores compressed HTML content. Optimised for bulk storage.
+3.  **Search DB:** Stores the Inverted Index (FTS5). Optimised for complex read queries.
+* **WAL Mode:** All databases use Write-Ahead Logging to allow readers (Search) and writers (Crawler) to operate simultaneously.
 
-### 3. Web Interface (`/app`)
-* **Backend:** A lightweight Flask application (`routes.py`) serves the frontend and handles search query processing.
-* **Frontend:** Minimalist HTML templates (`index.html`) designed for maximum accessibility and speed.
+### 3. Incremental Indexer (`indexer.py`)
+A standalone service that bridges the gap between raw storage and the search index.
+* **Batch Processing:** Reads raw HTML from Storage, strips clutter, and updates the Search DB in transactions.
+* **Language Detection:** Analyses content during indexing to support language-specific search filtering.
+
+### 4. Search Interface (`/app`)
+* **Ranking Algorithm:** Uses a custom hybrid scoring system combining BM25 (text relevance), Domain Authority, and Content Freshness.
+* **Two-Pass Ranking:** Implements a strict-to-loose fallback strategy and a domain diversity penalty to prevent result clutter.
 
 ---
+
+## Directory Structure
 
 ## Directory Structure
 
@@ -63,19 +73,21 @@ Data persistence allows for separation between the crawling and serving logic.
 vigilare/
 ├── app/                  # Web Interface Logic
 │   ├── templates/        # HTML Frontend
-│   └── routes.py         # Search Request Handlers
+│   └── routes.py         # Search & Ranking Logic
 ├── crawler/              # Spider Logic
-│   ├── bot.py            # Core Crawling Loop
-│   └── utils.py          # Helper Functions
+│   ├── bot.py            # Core Crawling Loop (Fetcher/Parser/Writer)
+│   └── utils.py          # Bloom Filters & URL Canonicalisation
 ├── data/                 # Persistent Storage (Ignored by Git)
-│   ├── bloom_*.bin       # Probabilistic Data Structures
-│   ├── vigilare.db       # Main Search Index
-│   └── vigilare.log      # Crawler Activity Logging
-├── run_crawler.py        # Entry Point: Start the Spider
-├── run_web.py            # Entry Point: Start the Search Engine
-├── indexer.py            # Standalone Indexing Service
-├── config.py             # Global Configuration
-└── monitor.py            # System Health Monitoring
+│   ├── vigilare_crawl.db   # Frontier & Metadata
+│   ├── vigilare_storage.db # Compressed HTML Content
+│   ├── vigilare_search.db  # FTS5 Search Index
+│   └── vigilare.log        # Debug Logs
+├── run_crawler.py        # Entry Point: Launches the Spider threads
+├── run_web.py            # Entry Point: Starts the Flask Web Server
+├── init_db.py            # Setup: Creates Schema & Injects Seeds
+├── indexer.py            # Service: Processes raw HTML into Search Index
+├── config.py             # Global Configuration & Tuning
+└── monitor.py            # Real-time System Health Dashboard
 ```
 
 ---
