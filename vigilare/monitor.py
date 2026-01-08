@@ -81,7 +81,7 @@ def monitor():
 
             os.system('cls' if os.name == 'nt' else 'clear')
             
-            print(f"================== VIGILO MONITOR =====================")
+            print(f"================== VIGILARE MONITOR =====================")
             print(f"")
             print(f"  PERFORMANCE")
             print(f"  -----------")

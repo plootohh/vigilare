@@ -17,7 +17,7 @@ MANUAL_SEEDS = [
 
 
 def init_database():
-    print("--- Initialising Vigilo Database ---")
+    print("--- Initialising Vigilare Database ---")
     
     if not os.path.exists(config.DATA_DIR):
         os.makedirs(config.DATA_DIR)

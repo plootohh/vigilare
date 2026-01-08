@@ -4,14 +4,14 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 
 # --- Database Paths ---
-DB_CRAWL = os.path.join(DATA_DIR, "vigilo_crawl.db")
-DB_STORAGE = os.path.join(DATA_DIR, "vigilo_storage.db")
-DB_SEARCH = os.path.join(DATA_DIR, "vigilo_search.db")
+DB_CRAWL = os.path.join(DATA_DIR, "vigilare_crawl.db")
+DB_STORAGE = os.path.join(DATA_DIR, "vigilare_storage.db")
+DB_SEARCH = os.path.join(DATA_DIR, "vigilare_search.db")
 
-LOG_PATH = os.path.join(DATA_DIR, "vigilo.log")
+LOG_PATH = os.path.join(DATA_DIR, "vigilare.log")
 
 # --- Crawler Identity ---
-USER_AGENT = "Mozilla/5.0 (compatible; Vigilo/0.3; +mailto:mailme31@proton.me)"
+USER_AGENT = "Mozilla/5.0 (compatible; Vigilare/0.1.1; +mailto:mailme31@proton.me)"
 
 # --- Tuning ---
 FETCH_THREADS = 200

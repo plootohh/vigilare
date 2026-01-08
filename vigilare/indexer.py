@@ -45,7 +45,7 @@ def update_last_indexed_id(rowid):
 
 
 def run_indexer():
-    print("--- Vigilo Indexer ---")
+    print("--- Vigilare Indexer ---")
     
     conn_storage = get_storage_conn()
     conn_search = get_search_conn()

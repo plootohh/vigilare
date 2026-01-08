@@ -47,7 +47,7 @@ def main():
     os.system('cls' if os.name == 'nt' else 'clear')
     
     print(f"==========================================")
-    print(f"   VIGILO CRAWLER ENGINE                  ")
+    print(f"   VIGILARE CRAWLER ENGINE                  ")
     print(f"==========================================")
     print(f" Database: {config.DB_CRAWL}")
     print(f" Fetchers: {FETCH_THREADS}")
