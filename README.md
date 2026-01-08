@@ -23,16 +23,16 @@ Vigilare (Latin: to remain watchful, vigilant) is an open source, privacy-first 
 ---
 
 ## Core Principles
-**1. Algorithmic Transparency**
+### 1. Algorithmic Transparency
 The source code governing result ranking is fully open-source. This ensures the indexing process remains auditable, preventing the implementation of filters or hidden biases commonly found in proprietary engines.
 
-**2. Zero-Retention Architecture**
+### 2. Zero-Retention Architecture
 Privacy is implemented at the architectural level rather than as a user setting. The system architecture precludes the creation of user profiles, thus providing:
     - No IP Address Logging
     - No Persistent Cookies
     - No Search History Logging or Retention
 
-**3. Unrestricted Access**
+### 3. Unrestricted Access
 The indexing crawler operates without geographic bias. Content is indexed based on availability rather than regional regulatory compliance, ensuring the preservation of information often targeted for censorship or removal.
 
 ---
@@ -42,13 +42,13 @@ The indexing crawler operates without geographic bias. Content is indexed based 
 The system utilises a modular, micro-service style architecture designed for high throughput on consumer hardware.
 
 ### 1. Crawler Engine (`/crawler`)
-The core spider (`bot.py`) is an asynchronous, polite web crawler. 
+The core crawler (`bot.py`) is an asynchronous, polite web crawler. 
 * **Duplicate Detection:** Implements Bloom Filters to check visited URLs in constant time with minimal memory footprint, avoiding expensive database lookups for every discovered link.
 * **State Management:** The crawler state is persisted to disk, allowing operations to pause and resume without data loss.
 
 ### 2. Storage (`/data`)
 Data persistence allows for separation between the crawling and serving logic.
-* **Database:** Uses SQLite with WAL (Write-Ahead Logging) enabled (`flush_wal.py`) to handle concurrent reads (search queries) and writes (indexing) without locking the database.
+* **Database:** Uses SQLite with WAL (Write-Ahead Logging) enabled to handle concurrent reads (search queries) and writes (indexing) without locking the database.
 * **File Structure:** All persistent state, including the databases, inverted index, Bloom filters, and logs, are isolated in the `data/` directory for easy backup and migration.
 
 ### 3. Web Interface (`/app`)
