@@ -80,12 +80,14 @@ vigilare/
 │   ├── vigilare_storage.db # Compressed HTML Content
 │   ├── vigilare_search.db  # FTS5 Search Index
 │   └── vigilare.log        # Debug Logs
-├── run_crawler.py        # Entry Point: Launches the Spider threads
-├── run_web.py            # Entry Point: Starts the Flask Web Server
-├── init_db.py            # Setup: Creates Schema & Injects Seeds
-├── indexer.py            # Service: Processes raw HTML into Search Index
 ├── config.py             # Global Configuration & Tuning
-└── monitor.py            # Real-time System Health Dashboard
+├── flush_wal.py          # Manual WAL Clean for Debugging Purposes
+├── indexer.py            # Service: Processes raw HTML into Search Index
+├── indexer_state.txt     # Persistent Storage of Indexer Progress
+├── init_db.py            # Setup: Creates Schema & Injects Seeds
+├── monitor.py            # Real-time System Health Dashboard
+├── run_crawler.py        # Entry Point: Launches the Spider threads
+└── run_web.py            # Entry Point: Starts the Flask Web Server
 ```
 
 ---
