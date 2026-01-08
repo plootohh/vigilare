@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vigilo | Unfiltered Search</title>
+    <style>
+        /* Theme Enhancements */
+        :root {
+            --bg-void: #0a0a0a;
+            --bg-highlight: #141414;
+            --border-color: #262626;
+            
+            --text-main: #f0f0f0;
+            --text-muted: #a1a1a1;
+            --text-accent: #00eda0;
+            
+            --link-color: #a8c7fa; 
+            --link-visited: #d0bcff;
+
+            --results-width: 680px;
+            --gap: 4rem;
+            --left-gutter: 180px; 
+            --radius: 12px;
+        }
+
+        /* Global Reset */
+        * { box-sizing: border-box; -webkit-font-smoothing: antialiased; }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg-void);
+            color: var(--text-main);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            line-height: 1.5;
+        }
+
+        a { text-decoration: none; color: inherit; transition: opacity 0.2s ease; }
+
+        /* Enhanced Header */
+        .app-header {
+            padding: 20px 0; 
+            position: sticky;
+            top: 0;
+            background-color: rgba(10, 10, 10, 0.8);
+            backdrop-filter: blur(12px);
+            z-index: 100;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .header-row {
+            display: flex;
+            align-items: center;
+            position: relative;
+            padding-left: var(--left-gutter);
+            max-width: 1400px;
+        }
+
+        /* Logo Styling */
+        .logo-container {
+            position: absolute;
+            left: 0;
+            width: var(--left-gutter);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .logo {
+            font-family: "Didot", serif;
+            font-size: 2.2rem;
+            font-weight: 800; 
+            color: var(--text-main);
+            letter-spacing: -1.5px; 
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        
+        .logo:hover { transform: scale(1.02); }
+
+        .logo span { 
+            color: var(--text-accent);
+            text-shadow: 0 0 20px rgba(0, 237, 160, 0.4);
+            margin-left: -1px;
+        }
+
+        .home-accent span { animation: neon-pulse 4s ease-in-out infinite; }
+        @keyframes neon-pulse {
+            0%, 100% { text-shadow: 0 0 15px rgba(0, 237, 160, 0.5); }
+            50% { text-shadow: 0 0 30px rgba(0, 237, 160, 0.8); }
+        }
+
+        .search-wrapper {
+            position: relative;
+            flex-grow: 1;
+            max-width: 650px;
+        }
+
+        .search-input {
+            width: 100%;
+            background-color: var(--bg-highlight);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 14px 28px; 
+            padding-right: 50px;
+            border-radius: 30px; 
+            font-size: 1rem;
+            outline: none;
+            transition: all 0.25s ease;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .search-input:focus {
+            background-color: #1a1a1a;
+            border-color: #444;
+            box-shadow: 0 0 0 3px rgba(0, 237, 160, 0.1), 0 8px 15px rgba(0,0,0,0.3);
+        }
+
+        .search-btn {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: var(--text-muted);
+            padding: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            border-radius: 50%;
+        }
+
+        .search-btn:hover {
+            color: var(--text-accent);
+            background-color: rgba(255, 255, 255, 0.05);
+            transform: translateY(-50%) scale(1.1);
+        }
+
+        .autocomplete-items {
+            position: absolute;
+            border: 1px solid var(--border-color);
+            border-top: none;
+            z-index: 99;
+            top: calc(100% + 5px);
+            left: 10px;
+            right: 10px;
+            border-radius: 18px;
+            background-color: var(--bg-highlight);
+            overflow: hidden;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            display: none; 
+        }
+
+        .autocomplete-items div {
+            padding: 12px 20px;
+            cursor: pointer;
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            transition: background 0.2s;
+        }
+
+        .autocomplete-items div:hover {
+            background-color: #222;
+            color: var(--text-main);
+        }
+
+        .main-container {
+            display: flex;
+            padding: 40px 0; 
+            flex: 1;
+            align-items: flex-start;
+            max-width: 1400px;
+        }
+
+        .results-column {
+            flex: 0 1 var(--results-width);
+            min-width: 0;
+            margin-left: var(--left-gutter); 
+        }
+
+        .result-item {
+            margin-bottom: 32px;
+            padding: 20px;
+            border-radius: var(--radius);
+            border: 1px solid transparent;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            margin-left: -20px;
+        }
+
+        .result-item:hover {
+            background-color: var(--bg-highlight);
+            border-color: var(--border-color);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            transform: translateX(5px);
+        }
+
+        .result-meta {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+
+        .result-url {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            letter-spacing: 0.2px;
+            opacity: 0.8;
+        }
+
+        .lang-tag {
+            font-size: 0.65rem;
+            color: var(--text-accent);
+            border: 1px solid rgba(0, 237, 160, 0.2);
+            padding: 2px 6px;
+            border-radius: 4px;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+
+        .result-title {
+            display: inline-block;
+            font-size: 1.25rem;
+            color: var(--link-color);
+            margin-bottom: 6px;
+            font-weight: 500;
+            line-height: 1.3;
+        }
+        
+        .result-title:hover { color: var(--text-accent); }
+
+        .result-snippet {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            line-height: 1.6;
+        }
+        
+        .result-snippet b { color: var(--text-main); font-weight: 600; }
+
+        .sidebar-column {
+            flex: 0 0 280px;
+            margin-left: var(--gap);
+            position: sticky;
+            top: 120px;
+        }
+
+        .stat-box {
+            padding: 24px;
+            background: var(--bg-highlight);
+            border-radius: var(--radius);
+            border: 1px solid var(--border-color);
+        }
+
+        .stat-line {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .stat-line strong { color: var(--text-accent); }
+
+        .mission-text {
+            font-size: 0.85rem;
+            color: #777;
+            margin-top: 24px;
+            line-height: 1.6;
+            border-top: 1px solid var(--border-color);
+            padding-top: 16px;
+        }
+
+        .pagination {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            margin-top: 48px;
+            padding-bottom: 80px;
+        }
+
+        .page-btn {
+            padding: 10px 20px;
+            background-color: var(--bg-highlight);
+            color: var(--text-main);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            transition: 0.3s ease;
+        }
+
+        .page-btn:hover {
+            border-color: var(--text-accent);
+            color: var(--text-accent);
+            transform: translateY(-2px);
+        }
+
+        .verified-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--bg-void);
+            background-color: var(--text-accent);
+            border-radius: 50%;
+            width: 14px;
+            height: 14px;
+            font-size: 9px;
+            font-weight: 900;
+        }
+
+        @media (max-width: 1100px) {
+            .sidebar-column { display: none; }
+            .header-row { padding-left: 20px; }
+            .logo-container { position: static; width: auto; margin-right: 20px; }
+            .results-column { margin-left: 20px; max-width: calc(100% - 40px); flex: 1; }
+        }
+    </style>
+</head>
+<body>
+
+    {% if not query %}
+    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 85vh; padding: 20px;">
+        <div class="logo home-accent" style="font-size: 5rem; margin-bottom: 40px;">Vigilo<span>.</span></div>
+        <form action="/search" method="get" style="width: 100%; max-width: 600px;" autocomplete="off">
+            <div class="search-wrapper" style="max-width: 100%;">
+                <input type="text" id="home-input" name="q" class="search-input" placeholder="Search freely..." autofocus>
+                <button type="submit" class="search-btn" aria-label="Search">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                </button>
+                <div id="home-input-list" class="autocomplete-items"></div>
+            </div>
+        </form>
+    </div>
+
+    {% else %}
+    <header class="app-header">
+        <div class="header-row">
+            <div class="logo-container">
+                <a href="/" class="logo">Vigilo<span>.</span></a>
+            </div>
+            <form action="/search" method="get" class="search-wrapper" autocomplete="off">
+                <input type="text" id="header-input" name="q" class="search-input" value="{{ query }}">
+                <button type="submit" class="search-btn" aria-label="Search">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                </button>
+                <div id="header-input-list" class="autocomplete-items"></div>
+            </form>
+        </div>
+    </header>
+
+    <div class="main-container">
+        <div class="results-column">
+            {% if count == '0' %}
+                <div class="result-item" style="pointer-events: none; border: none; background: transparent;">
+                    <p style="color: var(--text-muted); font-size: 1.1rem;">No results found for <b style="color:var(--text-main)">{{ query }}</b>.</p>
+                </div>
+            {% else %}
+                {% for result in results %}
+                <div class="result-item">
+                    <div class="result-meta">
+                        <img src="https://www.google.com/s2/favicons?domain={{ result.domain }}&sz=32" style="width: 16px; height: 16px; border-radius: 4px; vertical-align: middle; filter: saturate(0.8);" onerror="this.style.display='none'">
+                        <span class="result-url">{{ result.url }}</span>
+                        {% if result.verified %}
+                        <span class="verified-badge" title="Verified Authority">✓</span>
+                        {% endif %}
+                        {% if result.lang and result.lang != 'unknown' %}
+                        <span class="lang-tag">{{ result.lang }}</span>
+                        {% endif %}
+                    </div>
+                    
+                    <a href="{{ result.url }}" class="result-title">{{ result.title }}</a>
+                    <div class="result-snippet">{{ result.snippet }}</div>
+                </div>
+                {% endfor %}
+
+                {% if total_pages > 1 %}
+                <div class="pagination">
+                    {% if page > 1 %}
+                        <a href="{{ url_for('search', q=query, page=page-1) }}" class="page-btn">← Previous</a>
+                    {% endif %}
+                    <span style="color: var(--text-muted); font-size: 0.9rem; font-weight: 500;">{{ page }} of {{ total_pages }}</span>
+                    {% if page < total_pages %}
+                        <a href="{{ url_for('search', q=query, page=page+1) }}" class="page-btn">Next →</a>
+                    {% endif %}
+                </div>
+                {% endif %}
+            {% endif %}
+        </div>
+
+        <aside class="sidebar-column">
+            <div class="stat-box">
+                <div class="stat-line">Results Found <strong>{{ count }}</strong></div>
+                <div class="stat-line">Time <strong>{{ time }}s</strong></div>
+                
+                <div class="mission-text">
+                    <b>Access to information is a right.</b><br>
+                    Vigilo is an independent search engine dedicated to the free exchange of information. Results are delivered without restriction, curation, or censorship.
+                </div>
+            </div>
+        </aside>
+    </div>
+    {% endif %}
+
+    <script>
+        function setupAutocomplete(inputId, listId) {
+            const input = document.getElementById(inputId);
+            const list = document.getElementById(listId);
+            if (!input) return;
+
+            input.addEventListener("input", function(e) {
+                const val = this.value;
+                if (!val || val.length < 2) {
+                    list.innerHTML = "";
+                    list.style.display = "none";
+                    return;
+                }
+                fetch(`/suggest?q=${encodeURIComponent(val)}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        list.innerHTML = "";
+                        if (data.length === 0) {
+                            list.style.display = "none";
+                            return;
+                        }
+                        data.forEach(item => {
+                            const div = document.createElement("div");
+                            const regex = new RegExp(`^(${val})`, "i");
+                            div.innerHTML = item.replace(regex, "<strong style='color:var(--text-accent)'>$1</strong>");
+                            div.addEventListener("click", function() {
+                                input.value = item;
+                                list.innerHTML = "";
+                                list.style.display = "none";
+                                input.form.submit();
+                            });
+                            list.appendChild(div);
+                        });
+                        list.style.display = "block";
+                    });
+            });
+
+            document.addEventListener("click", function (e) {
+                if (e.target !== input && e.target !== list) {
+                    list.style.display = "none";
+                }
+            });
+        }
+        setupAutocomplete("home-input", "home-input-list");
+        setupAutocomplete("header-input", "header-input-list");
+    </script>
+</body>
+</html>

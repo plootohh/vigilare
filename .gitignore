@@ -1,0 +1,29 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.so
+
+# --- Virtual Environments ---
+venv/
+env/
+.venv/
+
+# --- Environment Variables & Secrets ---
+.env
+.env.local
+
+# --- Operating System Files ---
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# --- VS Code Settings ---
+.vscode/
+
+# --- Databases ---
+*.sqlite3
+*.db
+
+# --- Logs ---
+# *.log
+# logs/
