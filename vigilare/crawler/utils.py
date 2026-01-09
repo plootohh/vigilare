@@ -1,4 +1,9 @@
-import sqlite3, math, mmh3, pickle, os, zlib
+import sqlite3
+import math
+import mmh3
+import pickle
+import os
+import zlib
 from urllib.parse import urlparse, parse_qsl, urlencode
 
 
@@ -16,8 +21,10 @@ class RotationalBloomFilter:
         self.rotate_threshold = int(capacity * 0.5)
         
         if not os.path.exists(data_dir):
-            try: os.makedirs(data_dir)
-            except: pass
+            try:
+                os.makedirs(data_dir)
+            except:
+                pass
 
     def _create_empty(self):
         return bytearray(math.ceil(self.capacity / 8))
@@ -46,8 +53,10 @@ class RotationalBloomFilter:
             self.rotate()
 
     def lookup(self, string):
-        if self._check_array(self.hot, string): return True
-        if self._check_array(self.cold, string): return True
+        if self._check_array(self.hot, string):
+            return True
+        if self._check_array(self.cold, string):
+            return True
         return False
 
     def rotate(self):
@@ -59,8 +68,10 @@ class RotationalBloomFilter:
 
     def save(self):
         try:
-            with open(self.hot_path, 'wb') as f: pickle.dump(self.hot, f)
-            with open(self.cold_path, 'wb') as f: pickle.dump(self.cold, f)
+            with open(self.hot_path, 'wb') as f:
+                pickle.dump(self.hot, f)
+            with open(self.cold_path, 'wb') as f:
+                pickle.dump(self.cold, f)
             return True
         except Exception as e:
             print(f"Bloom Save Error: {e}")
@@ -69,9 +80,11 @@ class RotationalBloomFilter:
     def load(self):
         try:
             if os.path.exists(self.hot_path):
-                with open(self.hot_path, 'rb') as f: self.hot = pickle.load(f)
+                with open(self.hot_path, 'rb') as f:
+                    self.hot = pickle.load(f)
             if os.path.exists(self.cold_path):
-                with open(self.cold_path, 'rb') as f: self.cold = pickle.load(f)
+                with open(self.cold_path, 'rb') as f:
+                    self.cold = pickle.load(f)
             return True
         except:
             return False
@@ -91,28 +104,39 @@ def get_high_perf_connection(db_path):
 
 
 def compress_html(data):
-    if not data: return None
-    if isinstance(data, str): data = data.encode('utf-8')
-    try: return zlib.compress(data)
-    except: return None
+    if not data:
+        return None
+    if isinstance(data, str):
+        data = data.encode('utf-8')
+    try:
+        return zlib.compress(data)
+    except:
+        return None
 
 
 def decompress_html(blob_data):
-    if not blob_data: return ""
-    try: return zlib.decompress(blob_data).decode('utf-8', errors='replace')
-    except: return ""
+    if not blob_data:
+        return ""
+    try:
+        return zlib.decompress(blob_data).decode('utf-8', errors='replace')
+    except:
+        return ""
 
 
 def canonicalise(url):
     try:
         url = str(url).strip()
-        if not url: return None
-        if '#' in url: url = url.split('#')[0]
+        if not url:
+            return None
+        if '#' in url:
+            url = url.split('#')[0]
         parsed = urlparse(url)
-        if parsed.scheme not in ("http", "https"): return None
+        if parsed.scheme not in ("http", "https"):
+            return None
         
         netloc = parsed.hostname
-        if not netloc: return None
+        if not netloc:
+            return None
         netloc = netloc.lower()
         if parsed.port:
             if (parsed.scheme == "http" and parsed.port != 80) or \
@@ -120,7 +144,8 @@ def canonicalise(url):
                 netloc += f":{parsed.port}"
         
         path = parsed.path.replace("//", "/")
-        if not path: path = "/"
+        if not path:
+            path = "/"
         
         ignore_exts = {
             '.png','.jpg','.jpeg','.gif','.css','.js','.ico','.svg',
@@ -128,7 +153,8 @@ def canonicalise(url):
             '.xml','.json','.txt','.bmp','.tif','.tiff','.woff','.woff2',
             '.ttf','.eot','.dmg','.iso','.bin','.dat','.apk','.rar'
         }
-        if any(path.lower().endswith(ext) for ext in ignore_exts): return None
+        if any(path.lower().endswith(ext) for ext in ignore_exts):
+            return None
 
         clean_query = ""
         if parsed.query:
@@ -144,6 +170,8 @@ def canonicalise(url):
                 clean_query = urlencode(filtered_qs)
 
         clean_url = f"{parsed.scheme}://{netloc}{path}"
-        if clean_query: clean_url += f"?{clean_query}"
+        if clean_query:
+            clean_url += f"?{clean_query}"
         return clean_url
-    except: return None
+    except:
+        return None

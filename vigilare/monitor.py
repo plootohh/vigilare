@@ -1,11 +1,13 @@
-import sqlite3, time, os, sys
+import sqlite3
+import time
+import os
+import sys
 from collections import deque
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import config
 
 
-# --- CONFIGURATION ---
 REFRESH_RATE = 2
 AVG_WINDOW_SIZE = 30
 
@@ -30,39 +32,68 @@ def get_sizes_mb():
     return (db_mb / (1024*1024), wal_mb / (1024*1024))
 
 
-def get_count(db_path, sql):
+def get_stats_batch():
+    stats = {
+        'visited': 0,
+        'pending': 0,
+        'inflight': 0,
+        'retries': 0,
+        'indexed': 0
+    }
+    
     try:
-        uri_path = db_path.replace("\\", "/")
+        uri_path = config.DB_CRAWL.replace("\\", "/")
+        conn = sqlite3.connect(f"file:{uri_path}?mode=ro", uri=True, timeout=5)
+        c = conn.cursor()
+        
+        c.execute("PRAGMA journal_mode=WAL;")
+        c.execute("PRAGMA synchronous=OFF;")
+        c.execute("PRAGMA query_only=1;")
+        
+        c.execute("SELECT COUNT(1) FROM visited")
+        stats['visited'] = c.fetchone()[0]
+        
+        c.execute("SELECT COUNT(1) FROM frontier WHERE status = 0")
+        stats['pending'] = c.fetchone()[0]
+        
+        c.execute("SELECT COUNT(1) FROM frontier WHERE status = 1")
+        stats['inflight'] = c.fetchone()[0]
+        
+        c.execute("SELECT COUNT(1) FROM frontier WHERE retry_count > 0")
+        stats['retries'] = c.fetchone()[0]
+        
+        conn.close()
+    except Exception as e:
+        pass
+
+    try:
+        uri_path = config.DB_SEARCH.replace("\\", "/")
         conn = sqlite3.connect(f"file:{uri_path}?mode=ro", uri=True, timeout=1)
         c = conn.cursor()
-        c.execute(sql)
-        val = c.fetchone()[0]
+        c.execute("SELECT COUNT(1) FROM search_index")
+        stats['indexed'] = c.fetchone()[0]
         conn.close()
-        return val
     except:
-        return 0
+        pass
+
+    return stats
 
 
 def monitor():
-    print("Initialising Monitor...")
+    print("Initialising Monitor (this may take a moment to cache the DB)...")
     
     speed_history = deque(maxlen=AVG_WINDOW_SIZE)
-    last_crawled = 0
-    last_time = time.time()
     
-    last_crawled = get_count(config.DB_CRAWL, "SELECT COUNT(*) FROM visited")
+    # Initial Fetch
+    initial_stats = get_stats_batch()
+    last_crawled = initial_stats['visited']
+    last_time = time.time()
 
     while True:
         try:
-            crawled_count = get_count(config.DB_CRAWL, "SELECT COUNT(*) FROM visited")
+            current_stats = get_stats_batch()
             
-            pending_count = get_count(config.DB_CRAWL, "SELECT COUNT(*) FROM frontier WHERE status = 0")
-            inflight_count = get_count(config.DB_CRAWL, "SELECT COUNT(*) FROM frontier WHERE status = 1")
-            
-            retry_count = get_count(config.DB_CRAWL, "SELECT COUNT(*) FROM frontier WHERE retry_count > 0")
-            
-            indexed_count = get_count(config.DB_SEARCH, "SELECT COUNT(*) FROM search_index")
-            
+            crawled_count = current_stats['visited']
             db_size, wal_size = get_sizes_mb()
 
             now = time.time()
@@ -71,7 +102,8 @@ def monitor():
             
             if time_delta > 0:
                 instant_ppm = (count_delta / time_delta) * 60
-                speed_history.append(instant_ppm)
+                if instant_ppm >= 0: 
+                    speed_history.append(instant_ppm)
             
             last_crawled = crawled_count
             last_time = now
@@ -79,31 +111,33 @@ def monitor():
             avg_ppm = sum(speed_history) / len(speed_history) if speed_history else 0
             daily_vol = avg_ppm * 60 * 24
 
+            # Display
             os.system('cls' if os.name == 'nt' else 'clear')
             
-            print(f"================== VIGILARE MONITOR =====================")
-            print(f"")
-            print(f"  PERFORMANCE")
-            print(f"  -----------")
+            print("================== VIGILARE MONITOR =====================")
+            print("")
+            print("  PERFORMANCE")
+            print("  -----------")
             print(f"  Speed:          {int(avg_ppm)} PPM")
             print(f"  Daily Vol:      {int(daily_vol):,} pages/24H")
-            print(f"")
-            print(f"  STORAGE")
-            print(f"  -------")
+            print("")
+            print("  STORAGE")
+            print("  -------")
             print(f"  DB Size:        {db_size:.1f} MB")
             print(f"  WAL Buffer:     {wal_size:.1f} MB  <-- (Writes Pending)")
-            print(f"")
-            print(f"  PIPELINE STATUS")
-            print(f"  ---------------")
-            print(f"  1. Pending:     {pending_count:,}  (Waiting in DB)")
-            print(f"  2. In-Flight:   {inflight_count:,}  (Active Threads)")
-            print(f"  3. Crawled:     {crawled_count:,}  (Downloaded)")
-            print(f"  4. Indexed:     {indexed_count:,}  (Searchable)")
-            print(f"")
-            print(f"  Errors/Retries: {retry_count:,}")
-            print(f"")
-            print(f"=======================================================")
-            print(f" Press Ctrl+C to exit monitor")
+            print("")
+            print("  PIPELINE STATUS")
+            print("  ---------------")
+            print(f"  1. Pending:     {current_stats['pending']:,}  (Waiting in DB)")
+            
+            print(f"  2. In-Flight:   {current_stats['inflight']:,}  (Active Threads)")
+            print(f"  3. Crawled:     {current_stats['visited']:,}  (Downloaded)")
+            print(f"  4. Indexed:     {current_stats['indexed']:,}  (Searchable)")
+            print("")
+            print(f"  Errors/Retries: {current_stats['retries']:,}")
+            print("")
+            print("=======================================================")
+            print(" Press Ctrl+C to exit monitor")
 
             time.sleep(REFRESH_RATE)
 
@@ -111,8 +145,9 @@ def monitor():
             print("\nMonitor closed.")
             sys.exit()
         except Exception as e:
-            print(f"Monitor glitch: {e}")
+            print(f"Monitor error: {e}") 
             time.sleep(1)
+
 
 if __name__ == "__main__":
     monitor()

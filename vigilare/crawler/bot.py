@@ -1,9 +1,20 @@
-import sqlite3, time, logging, requests, sys, os, threading, queue, random, json, zlib, ssl, urllib3
+import sqlite3
+import time
+import logging
+import requests
+import sys
+import os
+import threading
+import queue
+import random
+import json
+import ssl
+import urllib3
 from urllib.parse import urljoin, urlparse
 from urllib import robotparser
 from requests.adapters import HTTPAdapter, Retry
 from selectolax.parser import HTMLParser
-from datetime import datetime, timedelta
+from datetime import datetime
 from collections import defaultdict, deque
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -214,7 +225,8 @@ def parse_worker():
             
             desc = ""
             meta = tree.css_first('meta[name="description"]')
-            if meta: desc = meta.attributes.get('content', '')
+            if meta:
+                desc = meta.attributes.get('content', '')
             
             content = ""
             if tree.body:
@@ -230,7 +242,8 @@ def parse_worker():
                     try:
                         joined_url = urljoin(url, href)
                         clean = canonicalise(joined_url)
-                        if clean: links.append(clean)
+                        if clean:
+                            links.append(clean)
                     except ValueError:
                         continue
 
@@ -341,8 +354,10 @@ def db_writer():
                     conn_crawl.commit()
                 except Exception as e:
                     logging.error(f"Crawl DB Write Error: {e}", exc_info=True)
-                    try: conn_crawl.rollback()
-                    except: pass
+                    try:
+                        conn_crawl.rollback()
+                    except:
+                        pass
                 
                 try:
                     if batch_storage:
@@ -358,7 +373,8 @@ def db_writer():
                 logging.debug(f"[DB] Commit: {len(batch_visited)} visited, {len(batch_frontier)} new links ({time.time()-commit_start:.3f}s)")
 
             if time.time() - last_bloom_save > 300:
-                if hasattr(BLOOM, 'save'): BLOOM.save()
+                if hasattr(BLOOM, 'save'):
+                    BLOOM.save()
                 last_bloom_save = time.time()
             else:
                 time.sleep(0.05)
@@ -444,4 +460,5 @@ def recover():
         conn.execute("UPDATE frontier SET status=0 WHERE status=1")
         conn.commit()
         conn.close()
-    except: pass
+    except:
+        pass

@@ -3,7 +3,7 @@ import os
 import config
 
 def fix_wal_bloat():
-    print(f"--- Draining WAL File ---")
+    print("--- Draining WAL File ---")
     db_path = config.DB_PATH
     wal_path = db_path + "-wal"
     

@@ -1,4 +1,9 @@
-import sqlite3, os, requests, zipfile, io, config
+import sqlite3
+import os
+import requests
+import zipfile
+import io
+import config
 
 # --- USER DEFINED SEEDS ---
 MANUAL_SEEDS = [
@@ -127,7 +132,8 @@ def populate_seeds_and_ranks():
         try:
             domain = url.split("/")[2]
             c.execute("INSERT OR IGNORE INTO frontier (url, domain, priority, status) VALUES (?, ?, ?, 0)", (url, domain, 1))
-        except: pass
+        except:
+            pass
 
     print(" [DOWNLOAD] Fetching Top 1M Domain List (Tranco)...")
     url = "https://tranco-list.eu/top-1m.csv.zip"

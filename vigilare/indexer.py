@@ -1,4 +1,8 @@
-import sqlite3, time, os, sys, config, zlib
+import sqlite3
+import time
+import os
+import sys
+import config
 from datetime import datetime
 from langdetect import detect
 
@@ -29,19 +33,22 @@ def get_crawl_conn():
 
 
 def get_last_indexed_id():
-    if not os.path.exists(STATE_FILE): return 0
+    if not os.path.exists(STATE_FILE):
+        return 0
     try:
         with open(STATE_FILE, "r") as f:
             content = f.read().strip()
             return int(content) if content else 0
-    except: return 0
+    except:
+        return 0
 
 
 def update_last_indexed_id(rowid):
     try:
         with open(STATE_FILE, "w") as f:
             f.write(str(rowid))
-    except: pass
+    except:
+        pass
 
 
 def run_indexer():
@@ -59,8 +66,12 @@ def run_indexer():
     while True:
         try:
             if batch_counter >= RECYCLE_CONN_EVERY:
-                conn_storage.close(); conn_search.close(); conn_crawl.close()
-                conn_storage = get_storage_conn(); conn_search = get_search_conn(); conn_crawl = get_crawl_conn()
+                conn_storage.close()
+                conn_search.close()
+                conn_crawl.close()
+                conn_storage = get_storage_conn()
+                conn_search = get_search_conn()
+                conn_crawl = get_crawl_conn()
                 batch_counter = 0
 
             c_store = conn_storage.cursor()
@@ -91,7 +102,8 @@ def run_indexer():
             for r in rows:
                 row_id, url, text, title = r
                 
-                if row_id > max_id_in_batch: max_id_in_batch = row_id
+                if row_id > max_id_in_batch:
+                    max_id_in_batch = row_id
                 
                 final_title = title if title else (text[:80].split('\n')[0] if text else url)
 

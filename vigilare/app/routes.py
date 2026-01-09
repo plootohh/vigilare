@@ -1,4 +1,9 @@
-import sqlite3, time, config, re, math, tldextract
+import sqlite3
+import time
+import config
+import re
+import math
+import tldextract
 from flask import render_template, request, jsonify
 from markupsafe import Markup
 from app import app
@@ -167,27 +172,33 @@ def saturation(val, cap):
 # Scoring components
 # -------------------------
 def authority_score(rank):
-    if not rank: return 0.0
+    if not rank:
+        return 0.0
     # Clamped at 60.0 to prevent domain dominance
     raw_score = 160.0 / (1.0 + math.log10(float(rank) + 10))
     return min(raw_score, 60.0)
 
 
 def freshness_score(crawled_at):
-    if not crawled_at: return 0.0
+    if not crawled_at:
+        return 0.0
     try:
         dt = datetime.strptime(crawled_at, "%Y-%m-%d %H:%M:%S")
         age = (datetime.now() - dt).days
         return 25.0 * math.exp(-age / 200.0)
-    except: return 0.0
+    except:
+        return 0.0
 
 
 def tld_bias(url):
     try:
         tld = extract(url).suffix or ""
-        if tld in {"gov", "edu", "org"}: return 15.0
-        if tld in {"io", "dev", "net"}: return 8.0
-    except: pass
+        if tld in {"gov", "edu", "org"}:
+            return 15.0
+        if tld in {"io", "dev", "net"}:
+            return 8.0
+    except:
+        pass
     return 0.0
 
 
@@ -197,12 +208,15 @@ def url_quality(url):
         score = 0.0
         depth = p.path.count("/")
         score -= max(0, depth - 3) * 4.0
-        if "?" in url: score -= 12.0
+        if "?" in url:
+            score -= 12.0
         tokens = tokenize(p.path)
         score += min(10.0, len(tokens) * 2.0)
-        if p.path in ("", "/"): score += 12.0
+        if p.path in ("", "/"):
+            score += 12.0
         return score
-    except: return 0.0
+    except:
+        return 0.0
 
 
 def field_score(row, terms, weights):
@@ -213,8 +227,10 @@ def field_score(row, terms, weights):
     score = 0.0
     phrase = " ".join(terms)
     
-    if phrase and phrase in title: score += 90.0
-    elif phrase and phrase in desc: score += 50.0
+    if phrase and phrase in title:
+        score += 90.0
+    elif phrase and phrase in desc:
+        score += 50.0
         
     title_hits = sum(weights.get(t, 0.0) for t in terms if t in title)
     desc_hits = sum(weights.get(t, 0.0) for t in terms if t in desc)
@@ -233,20 +249,26 @@ def field_score(row, terms, weights):
 def intent_boost(intent, url, nav_slug):
     if intent == "navigational" and nav_slug:
         try:
-            if nav_slug in urlparse(url).netloc: return 180.0
-        except: pass
+            if nav_slug in urlparse(url).netloc:
+                return 180.0
+        except:
+            pass
     return 0.0
 
 
 def language_score(row_lang, user_lang):
-    if not row_lang: return 0.0
+    if not row_lang:
+        return 0.0
     try:
         rl = row_lang.lower().split("-")[0]
         ul = user_lang.lower().split("-")[0]
-        if rl == ul: return 40.0
-        if rl and ul and rl[0] == ul[0]: return 8.0
+        if rl == ul:
+            return 40.0
+        if rl and ul and rl[0] == ul[0]:
+            return 8.0
         return -10.0
-    except: return 0.0
+    except:
+        return 0.0
 
 
 # -------------------------
@@ -256,11 +278,13 @@ def domain_from_url(url):
     try:
         e = extract(url)
         return e.domain or ""
-    except: return ""
+    except:
+        return ""
 
 
 def matches_brand_phrase(raw_normalized_no_space, row_domain_base):
-    if not row_domain_base: return False
+    if not row_domain_base:
+        return False
     return raw_normalized_no_space == row_domain_base
 
 
@@ -291,14 +315,19 @@ def calculate_score(conn, row, terms, weights, intent, nav_slug, domain_counts,
         if site_directive:
             sd = site_directive.lower().rstrip("/")
             if sd and (sd in domain or sd == row_domain_base):
-                if is_root: score += 240.0
-                else: score += 80.0
+                if is_root:
+                    score += 240.0
+                else:
+                    score += 80.0
                     
         if raw_brand_normalized:
             if matches_brand_phrase(raw_brand_normalized, row_domain_base):
-                if is_root: score += 220.0
-                else: score += 40.0
-    except: pass
+                if is_root:
+                    score += 220.0
+                else:
+                    score += 40.0
+    except:
+        pass
 
     return score
 
@@ -383,7 +412,8 @@ def search():
             row_dict = dict(r)
             norm = re.sub(r"^https?://(www\.)?", "", row_dict["url"].strip("/")).rstrip("/")
             
-            if norm in seen_norm: continue
+            if norm in seen_norm:
+                continue
             seen_norm.add(norm)
 
             score = calculate_score(
@@ -394,7 +424,8 @@ def search():
                 user_lang=user_lang
             )
             
-            if fallback_triggered: score *= 0.8
+            if fallback_triggered:
+                score *= 0.8
             pre_scored.append((score, row_dict))
 
         pre_scored.sort(key=lambda x: x[0], reverse=True)

@@ -1,4 +1,7 @@
-import threading, time, sys, os, sqlite3, logging
+import threading
+import time
+import sys
+import os
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -46,13 +49,13 @@ def monitor_loop():
 def main():
     os.system('cls' if os.name == 'nt' else 'clear')
     
-    print(f"==========================================")
-    print(f"   VIGILARE CRAWLER ENGINE                  ")
-    print(f"==========================================")
+    print("==========================================")
+    print("   VIGILARE CRAWLER ENGINE                  ")
+    print("==========================================")
     print(f" Database: {config.DB_CRAWL}")
     print(f" Fetchers: {FETCH_THREADS}")
     print(f" Parsers:  {PARSE_THREADS}")
-    print(f"==========================================\n")
+    print("==========================================\n")
 
     print(" [INIT] Recovering database state...")
     recover()
