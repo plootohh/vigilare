@@ -27,3 +27,6 @@ Desktop.ini
 # --- Logs ---
 # *.log
 # logs/
+
+# --- Project Data Storage ---
+vigilare/data/
