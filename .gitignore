@@ -30,3 +30,4 @@ Desktop.ini
 
 # --- Project Data Storage ---
 vigilare/data/
+vigilare/indexer_state.txt
