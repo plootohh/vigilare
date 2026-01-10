@@ -38,7 +38,7 @@ def monitor_loop():
                 f"FetchQ: {q_fetch:<6} | "
                 f"ParseQ: {q_parse:<4} | "
                 f"WriteQ: {q_write:<4} | "
-                f"Active Threads: {threading.active_count()}"
+                f"Active Threads: {threading.active_count():<3}      "
             )
             sys.stdout.flush()
             time.sleep(1)
@@ -55,6 +55,7 @@ def main():
     print(f" Database: {config.DB_CRAWL}")
     print(f" Fetchers: {FETCH_THREADS}")
     print(f" Parsers:  {PARSE_THREADS}")
+    print(" Logs:     data/vigilare.log")
     print("==========================================\n")
 
     print(" [INIT] Recovering database state...")
@@ -89,8 +90,9 @@ def main():
     try:
         monitor_loop()
     except KeyboardInterrupt:
-        print("\n\n [STOP] Shutdown signal received!")
-        print(" [STOP] Waiting for queues to drain (5s)...")
+        sys.stdout.write("\n\n [STOP] Shutdown signal received!")
+        sys.stdout.flush()
+        print("\n [STOP] Waiting for queues to drain (5s)...")
         time.sleep(2) 
         print(" [STOP] Shutdown complete.")
         sys.exit(0)

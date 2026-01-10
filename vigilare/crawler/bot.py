@@ -14,7 +14,7 @@ from urllib.parse import urljoin, urlparse
 from urllib import robotparser
 from requests.adapters import HTTPAdapter, Retry
 from selectolax.parser import HTMLParser
-from datetime import datetime
+from datetime import datetime, timedelta
 from collections import defaultdict, deque
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -22,7 +22,7 @@ import config
 from crawler.utils import canonicalise, compress_html, RotationalBloomFilter
 
 
-# --- LOGGING ---
+# --- LOGGING SETUP ---
 root_logger = logging.getLogger()
 root_logger.setLevel(logging.DEBUG)
 for handler in root_logger.handlers[:]:
@@ -34,12 +34,7 @@ file_handler.setLevel(logging.DEBUG)
 file_handler.setFormatter(file_formatter)
 root_logger.addHandler(file_handler)
 
-stream_formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt='%H:%M:%S')
-stream_handler = logging.StreamHandler(sys.stdout)
-stream_handler.setLevel(logging.INFO) 
-stream_handler.setFormatter(stream_formatter)
-root_logger.addHandler(stream_handler)
-
+# Silence noisy libraries
 logging.getLogger("urllib3").setLevel(logging.ERROR)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -64,18 +59,18 @@ class DomainManager:
     def can_crawl(self, domain):
         if self.page_counts[domain] >= config.MAX_PAGES_PER_DOMAIN:
             logging.debug(f"[Gov] SKIP {domain}: Hit Max Cap ({config.MAX_PAGES_PER_DOMAIN})")
-            return False
+            return 'CAP_HIT'
         
         if self.failures[domain] > 10:
             if time.time() - self.last_access[domain] < 300: 
                 logging.debug(f"[Gov] SKIP {domain}: Penalty Box (Failures: {self.failures[domain]})")
-                return False
+                return 'PENALTY_BOX'
         
         if time.time() - self.last_access[domain] < config.CRAWL_DELAY:
             logging.debug(f"[Gov] SKIP {domain}: Politeness Wait")
-            return False
+            return 'POLITENESS'
             
-        return True
+        return 'OK'
 
     def mark_access(self, domain): self.last_access[domain] = time.time()
     def mark_success(self, domain): self.page_counts[domain] += 1
@@ -163,13 +158,20 @@ def fetch_worker():
         try:
             url, retry_count = FETCH_QUEUE.get()
             domain = urlparse(url).netloc
+            status = DOMAIN_MGR.can_crawl(domain)
             
-            if not DOMAIN_MGR.can_crawl(domain):
-                if DOMAIN_MGR.page_counts[domain] >= config.MAX_PAGES_PER_DOMAIN:
+            if status != 'OK':
+                if status == 'CAP_HIT':
                     WRITE_QUEUE.put(('status_update', (2, url)))
-                else:
-                    FETCH_QUEUE.put((url, retry_count))
-                    time.sleep(0.1)
+                elif status == 'PENALTY_BOX':
+                    if retry_count >= 5:
+                        WRITE_QUEUE.put(('status_update', (3, url)))
+                        logging.debug(f"[Gov] {domain} Penalty Loop -> ABANDONED {url}")
+                    else:
+                        WRITE_QUEUE.put(('retry', (url, retry_count + 1))) 
+                elif status == 'POLITENESS':
+                    WRITE_QUEUE.put(('reschedule', (url, 5)))
+
                 FETCH_QUEUE.task_done()
                 continue
 
@@ -187,7 +189,7 @@ def fetch_worker():
             if result['error']:
                 logging.debug(f"[Fetch] FAIL {url} ({result['error']}) {dur:.2f}s")
                 DOMAIN_MGR.mark_failure(domain)
-                if retry_count < 2:
+                if retry_count < 3:
                     WRITE_QUEUE.put(('retry', (url, retry_count + 1)))
                 else:
                     WRITE_QUEUE.put(('status_update', (3, url)))
@@ -290,6 +292,7 @@ def db_writer():
             batch_status = []
             batch_reserve = [] 
             batch_retries = []
+            batch_reschedule = []
 
             while not WRITE_QUEUE.empty() and len(batch_visited) < 2000:
                 msg_type, payload = WRITE_QUEUE.get()
@@ -326,10 +329,13 @@ def db_writer():
                     urls = payload
                     batch_reserve.extend([(u,) for u in urls])
 
+                elif msg_type == 'reschedule':
+                    future = (datetime.now() + timedelta(seconds=payload[1])).strftime('%Y-%m-%d %H:%M:%S')
+                    batch_reschedule.append((future, payload[0]))
+
                 WRITE_QUEUE.task_done()
 
-            if any([batch_visited, batch_status, batch_frontier, batch_reserve, batch_retries]):
-                commit_start = time.time()
+            if any([batch_visited, batch_status, batch_frontier, batch_reserve, batch_retries, batch_reschedule]):
                 try:
                     conn_crawl.execute("BEGIN IMMEDIATE")
                     if batch_visited:
@@ -350,6 +356,9 @@ def db_writer():
 
                     if batch_retries:
                         conn_crawl.executemany("UPDATE frontier SET status=0, priority=50, retry_count=? WHERE url=?", batch_retries)
+                    
+                    if batch_reschedule:
+                        conn_crawl.executemany("UPDATE frontier SET status=0, next_crawl_time=? WHERE url=?", batch_reschedule)
                         
                     conn_crawl.commit()
                 except Exception as e:
@@ -369,8 +378,6 @@ def db_writer():
                         conn_storage.commit()
                 except Exception as e:
                     logging.error(f"Storage DB Write Error: {e}", exc_info=True)
-                
-                logging.debug(f"[DB] Commit: {len(batch_visited)} visited, {len(batch_frontier)} new links ({time.time()-commit_start:.3f}s)")
 
             if time.time() - last_bloom_save > 300:
                 if hasattr(BLOOM, 'save'):

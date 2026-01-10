@@ -36,7 +36,7 @@ def get_stats_batch():
     stats = {
         'visited': 0,
         'pending': 0,
-        'inflight': 0,
+        'active': 0,
         'retries': 0,
         'indexed': 0
     }
@@ -57,7 +57,7 @@ def get_stats_batch():
         stats['pending'] = c.fetchone()[0]
         
         c.execute("SELECT COUNT(1) FROM frontier WHERE status = 1")
-        stats['inflight'] = c.fetchone()[0]
+        stats['active'] = c.fetchone()[0]
         
         c.execute("SELECT COUNT(1) FROM frontier WHERE retry_count > 0")
         stats['retries'] = c.fetchone()[0]
@@ -124,15 +124,15 @@ def monitor():
             print("  STORAGE")
             print("  -------")
             print(f"  DB Size:        {db_size:.1f} MB")
-            print(f"  WAL Buffer:     {wal_size:.1f} MB  <-- (Writes Pending)")
+            print(f"  WAL Buffer:     {wal_size:.1f} MB")
             print("")
             print("  PIPELINE STATUS")
             print("  ---------------")
-            print(f"  1. Pending:     {current_stats['pending']:,}  (Waiting in DB)")
+            print(f"  1. Pending:     {current_stats['pending']:,}        (Waiting in DB)")
             
-            print(f"  2. In-Flight:   {current_stats['inflight']:,}  (Active Threads)")
-            print(f"  3. Crawled:     {current_stats['visited']:,}  (Downloaded)")
-            print(f"  4. Indexed:     {current_stats['indexed']:,}  (Searchable)")
+            print(f"  2. Active:      {current_stats['active']:,}         (Being Downloaded)")
+            print(f"  3. Crawled:     {current_stats['visited']:,}         (Downloaded)")
+            print(f"  4. Indexed:     {current_stats['indexed']:,}         (Searchable)")
             print("")
             print(f"  Errors/Retries: {current_stats['retries']:,}")
             print("")
