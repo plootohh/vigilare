@@ -11,11 +11,11 @@ DB_SEARCH = os.path.join(DATA_DIR, "vigilare_search.db")
 LOG_PATH = os.path.join(DATA_DIR, "vigilare.log")
 
 # --- Crawler Identity ---
-USER_AGENT = "Mozilla/5.0 (compatible; Vigilare/0.1.1; +mailto:mailme31@proton.me)"
+USER_AGENT = "Mozilla/5.0 (compatible; Vigilare/0.1.2; +mailto:mailme31@proton.me)"
 
 # --- Tuning ---
-FETCH_THREADS = 200
-PARSE_THREADS = 75
+FETCH_THREADS = 150
+PARSE_THREADS = 5
 BATCH_SIZE = 5000   
 
 # --- Governance & Limits ---

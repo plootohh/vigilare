@@ -1,3 +1,4 @@
+import io
 import sqlite3
 import time
 import logging
@@ -34,7 +35,6 @@ file_handler.setLevel(logging.DEBUG)
 file_handler.setFormatter(file_formatter)
 root_logger.addHandler(file_handler)
 
-# Silence noisy libraries
 logging.getLogger("urllib3").setLevel(logging.ERROR)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -163,12 +163,14 @@ def fetch_worker():
             if status != 'OK':
                 if status == 'CAP_HIT':
                     WRITE_QUEUE.put(('status_update', (2, url)))
+                
                 elif status == 'PENALTY_BOX':
                     if retry_count >= 5:
                         WRITE_QUEUE.put(('status_update', (3, url)))
                         logging.debug(f"[Gov] {domain} Penalty Loop -> ABANDONED {url}")
                     else:
                         WRITE_QUEUE.put(('retry', (url, retry_count + 1))) 
+                
                 elif status == 'POLITENESS':
                     WRITE_QUEUE.put(('reschedule', (url, 5)))
 
@@ -437,27 +439,66 @@ def dispatcher_loop():
 
 def download_page(url):
     res = {'content': None, 'headers': {}, 'status': 0, 'error': None}
+    
+    MAX_DOWNLOAD_TIME = 15
+    MAX_SIZE = config.MAX_BYTES
+
     try:
-        r = SESSION.get(url, headers={'User-Agent': config.USER_AGENT}, timeout=(3, 10))
-        res['status'] = r.status_code
-        res['headers'] = r.headers
+        start_time = time.time()
         
-        if r.status_code != 200:
-            res['error'] = f"HTTP_{r.status_code}"
+        with SESSION.get(
+            url, 
+            headers={'User-Agent': config.USER_AGENT}, 
+            timeout=(4, 10), 
+            stream=True
+        ) as r:
+            
+            res['status'] = r.status_code
+            res['headers'] = dict(r.headers)
+
+            if r.status_code != 200:
+                res['error'] = f"HTTP_{r.status_code}"
+                return res
+
+            ctype = r.headers.get("Content-Type", "").lower()
+            if "text/html" not in ctype and "application/xhtml" not in ctype:
+                res['error'] = "NOT_HTML"
+                return res
+
+            try:
+                if int(r.headers.get("Content-Length", 0)) > MAX_SIZE:
+                    res['error'] = "TOO_LARGE_HEADER"
+                    return res
+            except (ValueError, TypeError):
+                pass
+
+            content_io = io.BytesIO()
+            size_downloaded = 0
+            
+            for chunk in r.iter_content(chunk_size=1024 * 128):
+                if time.time() - start_time > MAX_DOWNLOAD_TIME:
+                    res['error'] = "TIMEOUT_DURING_READ"
+                    return res
+                
+                if chunk:
+                    content_io.write(chunk)
+                    size_downloaded += len(chunk)
+                    
+                    if size_downloaded > MAX_SIZE:
+                        res['error'] = "TOO_LARGE_BODY"
+                        return res
+            
+            res['content'] = content_io.getvalue()
             return res
-        
-        if "text/html" not in r.headers.get("Content-Type", "").lower():
-            res['error'] = "NOT_HTML"
-            return res
-        
-        if len(r.content) > config.MAX_BYTES:
-            res['error'] = "TOO_LARGE"
-            return res
-        
-        res['content'] = r.content
-        return res
+    except requests.exceptions.Timeout:
+        res['error'] = "TIMEOUT_CONNECT"
+    except requests.exceptions.ConnectionError:
+        res['error'] = "CONNECTION_ERROR"
+    except requests.exceptions.TooManyRedirects:
+        res['error'] = "REDIRECT_LOOP"
     except Exception as e:
         res['error'] = f"NET_ERROR: {str(e)[:50]}"
+        
     return res
 
 

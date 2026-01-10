@@ -10,7 +10,7 @@ from app import app
 from urllib.parse import urlparse
 from datetime import datetime
 
-extract = tldextract.TLDExtract(cache_dir=None)
+extract = tldextract.TLDExtract(cache_dir=None, suffix_list_urls=[])
 
 # -------------------------
 # Config
@@ -173,7 +173,6 @@ def saturation(val, cap):
 def authority_score(rank):
     if not rank:
         return 0.0
-    # Clamped at 60.0 to prevent domain dominance
     raw_score = 160.0 / (1.0 + math.log10(float(rank) + 10))
     return min(raw_score, 60.0)
 
@@ -189,30 +188,34 @@ def freshness_score(crawled_at):
         return 0.0
 
 
-def tld_bias(url):
+def tld_bias(suffix):
+    if not suffix:
+        return 0.0
     try:
-        tld = extract(url).suffix or ""
-        if tld in {"gov", "edu", "org"}:
+        if suffix in {"gov", "edu", "org"}:
             return 15.0
-        if tld in {"io", "dev", "net"}:
+        if suffix in {"io", "dev", "net"}:
             return 8.0
     except Exception:
         pass
     return 0.0
 
 
-def url_quality(url):
+def url_quality(parsed_obj, raw_url):
     try:
-        p = urlparse(url)
         score = 0.0
-        depth = p.path.count("/")
+        depth = parsed_obj.path.count("/")
         score -= max(0, depth - 3) * 4.0
-        if "?" in url:
+        
+        if "?" in raw_url:
             score -= 12.0
-        tokens = tokenize(p.path)
+            
+        tokens = tokenize(parsed_obj.path)
         score += min(10.0, len(tokens) * 2.0)
-        if p.path in ("", "/"):
+        
+        if parsed_obj.path in ("", "/"):
             score += 12.0
+            
         return score
     except Exception:
         return 0.0
@@ -245,10 +248,10 @@ def field_score(row, terms, weights):
     return score
 
 
-def intent_boost(intent, url, nav_slug):
+def intent_boost(intent, netloc, nav_slug):
     if intent == "navigational" and nav_slug:
         try:
-            if nav_slug in urlparse(url).netloc:
+            if nav_slug in netloc:
                 return 180.0
         except Exception:
             pass
@@ -273,14 +276,6 @@ def language_score(row_lang, user_lang):
 # -------------------------
 # Domain/brand helpers
 # -------------------------
-def domain_from_url(url):
-    try:
-        e = extract(url)
-        return e.domain or ""
-    except Exception:
-        return ""
-
-
 def matches_brand_phrase(raw_normalized_no_space, row_domain_base):
     if not row_domain_base:
         return False
@@ -294,21 +289,31 @@ def calculate_score(conn, row, terms, weights, intent, nav_slug, domain_counts,
                     site_directive=None, raw_brand_normalized="",
                     user_lang="en"):
     
+    row_url = row.get("url")
+    try:
+        parsed = urlparse(row_url)
+        extracted = extract(row_url)
+        
+        domain = parsed.netloc
+        row_domain_base = extracted.domain
+        suffix = extracted.suffix
+    except Exception:
+        return 0.0
+
     score = 100.0
     score += authority_score(row.get("domain_rank"))
     score += freshness_score(row.get("crawled_at"))
-    score += tld_bias(row.get("url"))
-    score += url_quality(row.get("url"))
+    
+    score += tld_bias(suffix)
+    score += url_quality(parsed, row_url)
+    
     score += language_score(row.get("language"), user_lang)
     score += field_score(row, terms, weights)
-    score += intent_boost(intent, row.get("url"), nav_slug)
+    score += intent_boost(intent, domain, nav_slug)
     
-    domain = urlparse(row.get("url")).netloc
     score -= domain_counts.get(domain, 0) * 15.0
 
     try:
-        row_domain_base = domain_from_url(row.get("url"))
-        parsed = urlparse(row.get("url"))
         is_root = parsed.path in ("", "/")
         
         if site_directive:
@@ -417,7 +422,7 @@ def search():
 
             score = calculate_score(
                 conn, row_dict, expanded_terms, weights, intent, nav_slug=None, 
-                domain_counts={}, # Key change
+                domain_counts={}, 
                 site_directive=site_directive, 
                 raw_brand_normalized=raw_brand_normalized,
                 user_lang=user_lang
