@@ -63,7 +63,7 @@ def get_stats_batch():
         stats['retries'] = c.fetchone()[0]
         
         conn.close()
-    except Exception as e:
+    except Exception:
         pass
 
     try:
@@ -73,7 +73,7 @@ def get_stats_batch():
         c.execute("SELECT COUNT(1) FROM search_index")
         stats['indexed'] = c.fetchone()[0]
         conn.close()
-    except:
+    except Exception:
         pass
 
     return stats
