@@ -132,7 +132,7 @@ def populate_seeds_and_ranks():
         try:
             domain = url.split("/")[2]
             c.execute("INSERT OR IGNORE INTO frontier (url, domain, priority, status) VALUES (?, ?, ?, 0)", (url, domain, 1))
-        except:
+        except Exception:
             pass
 
     print(" [DOWNLOAD] Fetching Top 1M Domain List (Tranco)...")

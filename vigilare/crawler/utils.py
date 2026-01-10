@@ -23,7 +23,7 @@ class RotationalBloomFilter:
         if not os.path.exists(data_dir):
             try:
                 os.makedirs(data_dir)
-            except:
+            except Exception:
                 pass
 
     def _create_empty(self):
@@ -86,7 +86,7 @@ class RotationalBloomFilter:
                 with open(self.cold_path, 'rb') as f:
                     self.cold = pickle.load(f)
             return True
-        except:
+        except Exception:
             return False
 
 
@@ -110,7 +110,7 @@ def compress_html(data):
         data = data.encode('utf-8')
     try:
         return zlib.compress(data)
-    except:
+    except Exception:
         return None
 
 
@@ -119,7 +119,7 @@ def decompress_html(blob_data):
         return ""
     try:
         return zlib.decompress(blob_data).decode('utf-8', errors='replace')
-    except:
+    except Exception:
         return ""
 
 
@@ -173,5 +173,5 @@ def canonicalise(url):
         if clean_query:
             clean_url += f"?{clean_query}"
         return clean_url
-    except:
+    except Exception:
         return None

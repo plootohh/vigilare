@@ -96,7 +96,7 @@ class LegacySSLAdapter(HTTPAdapter):
         ctx.options |= 0x4
         try:
             ctx.set_ciphers('DEFAULT:@SECLEVEL=1')
-        except:
+        except Exception:
             pass
         
         self.poolmanager = urllib3.poolmanager.PoolManager(
@@ -153,7 +153,7 @@ def check_robots_allow(domain, url):
         if not allowed:
             logging.debug(f"[Robots] DENIED {url}")
         return allowed
-    except:
+    except Exception:
         return True
 
 
@@ -356,7 +356,7 @@ def db_writer():
                     logging.error(f"Crawl DB Write Error: {e}", exc_info=True)
                     try:
                         conn_crawl.rollback()
-                    except:
+                    except Exception:
                         pass
                 
                 try:
@@ -460,5 +460,5 @@ def recover():
         conn.execute("UPDATE frontier SET status=0 WHERE status=1")
         conn.commit()
         conn.close()
-    except:
+    except Exception:
         pass

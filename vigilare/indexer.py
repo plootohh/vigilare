@@ -39,7 +39,7 @@ def get_last_indexed_id():
         with open(STATE_FILE, "r") as f:
             content = f.read().strip()
             return int(content) if content else 0
-    except:
+    except Exception:
         return 0
 
 
@@ -47,7 +47,7 @@ def update_last_indexed_id(rowid):
     try:
         with open(STATE_FILE, "w") as f:
             f.write(str(rowid))
-    except:
+    except Exception:
         pass
 
 
@@ -111,7 +111,7 @@ def run_indexer():
                 if text and len(text) > 200:
                     try:
                         lang = detect(text[:1000])
-                    except:
+                    except Exception:
                         pass
 
                 to_insert.append((

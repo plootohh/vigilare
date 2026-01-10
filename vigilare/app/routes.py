@@ -37,7 +37,6 @@ def check_rate_limit(ip):
     
     start, count = RATE_LIMIT[ip]
     if now - start > RATE_LIMIT_WINDOW:
-        # Reset window
         RATE_LIMIT[ip] = (now, 1)
         return True
     
@@ -186,7 +185,7 @@ def freshness_score(crawled_at):
         dt = datetime.strptime(crawled_at, "%Y-%m-%d %H:%M:%S")
         age = (datetime.now() - dt).days
         return 25.0 * math.exp(-age / 200.0)
-    except:
+    except Exception:
         return 0.0
 
 
@@ -197,7 +196,7 @@ def tld_bias(url):
             return 15.0
         if tld in {"io", "dev", "net"}:
             return 8.0
-    except:
+    except Exception:
         pass
     return 0.0
 
@@ -215,7 +214,7 @@ def url_quality(url):
         if p.path in ("", "/"):
             score += 12.0
         return score
-    except:
+    except Exception:
         return 0.0
 
 
@@ -251,7 +250,7 @@ def intent_boost(intent, url, nav_slug):
         try:
             if nav_slug in urlparse(url).netloc:
                 return 180.0
-        except:
+        except Exception:
             pass
     return 0.0
 
@@ -267,7 +266,7 @@ def language_score(row_lang, user_lang):
         if rl and ul and rl[0] == ul[0]:
             return 8.0
         return -10.0
-    except:
+    except Exception:
         return 0.0
 
 
@@ -278,7 +277,7 @@ def domain_from_url(url):
     try:
         e = extract(url)
         return e.domain or ""
-    except:
+    except Exception:
         return ""
 
 
@@ -326,7 +325,7 @@ def calculate_score(conn, row, terms, weights, intent, nav_slug, domain_counts,
                     score += 220.0
                 else:
                     score += 40.0
-    except:
+    except Exception:
         pass
 
     return score
@@ -499,7 +498,7 @@ def suggest():
         c.execute("SELECT title FROM crawl_db.visited WHERE title LIKE ? LIMIT 5", (f"%{q}%",))
         rows = c.fetchall()
         return jsonify([r[0] for r in rows if r[0]])
-    except:
+    except Exception:
         return jsonify([])
     finally:
         if conn:
