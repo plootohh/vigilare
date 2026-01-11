@@ -16,7 +16,7 @@ USER_AGENT = "Mozilla/5.0 (compatible; Vigilare/0.1.2; +mailto:mailme31@proton.m
 # --- Tuning ---
 FETCH_THREADS = 150
 PARSE_THREADS = 5
-BATCH_SIZE = 5000   
+BATCH_SIZE = 5000
 
 # --- Governance & Limits ---
 MAX_BYTES = 6_000_000

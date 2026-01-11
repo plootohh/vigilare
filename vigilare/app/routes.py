@@ -78,7 +78,7 @@ def get_db_connection():
 # -------------------------
 # Query utilities
 # -------------------------
-def normalize_tokens(raw):
+def normalise_tokens(raw):
     raw = raw.lower()
     raw = re.sub(r"[^a-z0-9\s]", " ", raw)
     tokens = raw.split()
@@ -87,7 +87,7 @@ def normalize_tokens(raw):
     return tokens[:MAX_QUERY_TERMS]
 
 
-def normalize_for_brand(raw):
+def normalise_for_brand(raw):
     return re.sub(r"[^a-z0-9]", "", raw.lower())
 
 
@@ -142,12 +142,12 @@ def term_weights(original_terms, expanded_terms):
 # -------------------------
 # Text analysis & proximity
 # -------------------------
-def tokenize(text):
+def tokenise(text):
     return re.findall(r"[a-z0-9]+", text.lower()) if text else []
 
 
 def multi_term_proximity(text, terms):
-    tokens = tokenize(text)
+    tokens = tokenise(text)
     if len(tokens) < 2 or len(terms) < 2:
         return 0.0
     
@@ -210,7 +210,7 @@ def url_quality(parsed_obj, raw_url):
         if "?" in raw_url:
             score -= 12.0
             
-        tokens = tokenize(parsed_obj.path)
+        tokens = tokenise(parsed_obj.path)
         score += min(10.0, len(tokens) * 2.0)
         
         if parsed_obj.path in ("", "/"):
@@ -276,17 +276,17 @@ def language_score(row_lang, user_lang):
 # -------------------------
 # Domain/brand helpers
 # -------------------------
-def matches_brand_phrase(raw_normalized_no_space, row_domain_base):
+def matches_brand_phrase(raw_normalised_no_space, row_domain_base):
     if not row_domain_base:
         return False
-    return raw_normalized_no_space == row_domain_base
+    return raw_normalised_no_space == row_domain_base
 
 
 # -------------------------
 # Final score aggregation
 # -------------------------
 def calculate_score(conn, row, terms, weights, intent, nav_slug, domain_counts,
-                    site_directive=None, raw_brand_normalized="",
+                    site_directive=None, raw_brand_normalised="",
                     user_lang="en"):
     
     row_url = row.get("url")
@@ -324,8 +324,8 @@ def calculate_score(conn, row, terms, weights, intent, nav_slug, domain_counts,
                 else:
                     score += 80.0
                     
-        if raw_brand_normalized:
-            if matches_brand_phrase(raw_brand_normalized, row_domain_base):
+        if raw_brand_normalised:
+            if matches_brand_phrase(raw_brand_normalised, row_domain_base):
                 if is_root:
                     score += 220.0
                 else:
@@ -364,7 +364,7 @@ def search():
     user_lang = accept.split(",")[0].split(";")[0].strip() or "en"
 
     site_directive = extract_site_directives(raw_query)
-    base_terms = normalize_tokens(raw_query)
+    base_terms = normalise_tokens(raw_query)
     
     if not base_terms:
         base_terms = raw_query.lower().split()
@@ -373,7 +373,7 @@ def search():
     weights = term_weights(base_terms, expanded_terms)
     
     intent = "navigational" if len(base_terms) <= 2 else "informational"
-    raw_brand_normalized = normalize_for_brand(raw_query)
+    raw_brand_normalised = normalise_for_brand(raw_query)
 
     conn = get_db_connection()
     c = conn.cursor()
@@ -424,7 +424,7 @@ def search():
                 conn, row_dict, expanded_terms, weights, intent, nav_slug=None, 
                 domain_counts={}, 
                 site_directive=site_directive, 
-                raw_brand_normalized=raw_brand_normalized,
+                raw_brand_normalised=raw_brand_normalised,
                 user_lang=user_lang
             )
             
