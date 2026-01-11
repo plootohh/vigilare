@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Vigilare | Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root { 
+            --bg: #050505; 
+            --panel: #0f0f0f; 
+            --border: #222;
+            --accent: #00eda0; 
+            --danger: #ff4444;
+            --warn: #ffaa00;
+            --text: #e0e0e0; 
+            --dim: #666; 
+        }
+        body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 30px; font-size: 14px; }
+        
+        /* Layout */
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 1px solid var(--border); }
+        .logo { font-size: 1.8rem; font-weight: 800; letter-spacing: -1px; }
+        .logo span { color: var(--accent); }
+        .status-badge { background: #1a1a1a; padding: 5px 12px; border-radius: 20px; font-size: 0.8rem; color: var(--accent); border: 1px solid var(--border); }
+
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-bottom: 20px; }
+        
+        /* Panels */
+        .panel { background: var(--panel); padding: 25px; border-radius: 16px; border: 1px solid var(--border); display: flex; flex-direction: column; justify-content: space-between; }
+        .panel h2 { margin: 0 0 15px 0; font-size: 0.85rem; color: var(--dim); text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
+        
+        .metric-big { font-size: 2.8rem; font-weight: 700; color: #fff; line-height: 1; margin-bottom: 5px; }
+        .metric-sub { font-size: 0.95rem; color: var(--dim); }
+        .metric-highlight { color: var(--accent); }
+
+        /* Storage Table */
+        .storage-row { display: flex; justify-content: space-between; margin-bottom: 8px; border-bottom: 1px solid #1a1a1a; padding-bottom: 4px; }
+        .storage-label { color: var(--dim); }
+        .storage-val { font-family: monospace; font-weight: 600; }
+        .wal-warn { color: var(--warn); }
+        .wal-crit { color: var(--danger); }
+
+        /* Chart Container */
+        .chart-container { position: relative; height: 300px; width: 100%; margin-top: 20px; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <div class="logo">vigilare<span>.</span> <span style="font-size: 1rem; color: #444; font-weight: 400;">Dashboard</span></div>
+    </div>
+
+    <div class="grid">
+        <div class="panel">
+            <h2>Crawl Velocity</h2>
+            <div class="metric-big" id="ppm">0</div>
+            <div class="metric-sub">Pages Per Minute</div>
+            <div class="metric-sub" style="margin-top: 10px; color: var(--accent);">Est: <span id="daily-vol">0</span> pages / 24h</div>
+        </div>
+
+        <div class="panel">
+            <h2>Queue Health</h2>
+            <div class="metric-big" id="q-active">0</div>
+            <div class="metric-sub">Active Threads</div>
+            <div class="metric-sub" style="margin-top: 10px;">Pending: <span id="q-pending" style="color:#fff">0</span></div>
+            <div class="metric-sub">Retries: <span id="q-retries" style="color:var(--warn)">0</span></div>
+        </div>
+
+        <div class="panel">
+            <h2>Total Progress</h2>
+            <div class="metric-big" id="total-visited">0</div>
+            <div class="metric-sub">Pages Crawled</div>
+            <div class="metric-sub" style="margin-top: 10px;">Indexed: <span id="total-indexed" style="color:#fff">0</span></div>
+        </div>
+
+        <div class="panel">
+            <h2>System Load</h2>
+            <div class="storage-row">
+                <span class="storage-label">CPU Usage</span>
+                <span class="storage-val" id="sys-cpu">0%</span>
+            </div>
+            <div class="storage-row">
+                <span class="storage-label">RAM Usage</span>
+                <span class="storage-val" id="sys-ram">0%</span>
+            </div>
+            <div class="storage-row">
+                <span class="storage-label">Disk Usage</span>
+                <span class="storage-val" id="sys-disk">0%</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid" style="grid-template-columns: 350px 1fr;">
+        <div class="panel">
+            <h2>Database Storage (MB)</h2>
+            
+            <div class="storage-row"><span class="storage-label" style="color:#fff">CRAWL DB</span> <span class="storage-val" id="sz-crawl-db">0</span></div>
+            <div class="storage-row"><span class="storage-label">↳ WAL Buffer</span> <span class="storage-val" id="sz-crawl-wal">0</span></div>
+            
+            <div class="storage-row" style="margin-top:10px"><span class="storage-label" style="color:#fff">STORAGE DB</span> <span class="storage-val" id="sz-store-db">0</span></div>
+            <div class="storage-row"><span class="storage-label">↳ WAL Buffer</span> <span class="storage-val" id="sz-store-wal">0</span></div>
+
+            <div class="storage-row" style="margin-top:10px"><span class="storage-label" style="color:#fff">SEARCH DB</span> <span class="storage-val" id="sz-search-db">0</span></div>
+            <div class="storage-row"><span class="storage-label">↳ WAL Buffer</span> <span class="storage-val" id="sz-search-wal">0</span></div>
+
+        </div>
+
+        <div class="panel">
+            <h2>Performance History (PPM)</h2>
+            <div class="chart-container">
+                <canvas id="speedChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const ctx = document.getElementById('speedChart').getContext('2d');
+        const chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Pages / Min',
+                    data: [],
+                    borderColor: '#00eda0',
+                    borderWidth: 2,
+                    backgroundColor: 'rgba(0, 237, 160, 0.05)',
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { display: false },
+                    y: { beginAtZero: true, grid: { color: '#222' }, border: { display: false } }
+                },
+                animation: { duration: 0 }
+            }
+        });
+
+        let lastCount = 0;
+        let lastTime = Date.now();
+        const historyLen = 60;
+
+        function formatNum(n) { return n ? n.toLocaleString() : "0"; }
+        function formatMB(n) { return n ? n.toFixed(1) + " MB" : "0.0 MB"; }
+
+        function updateStorage(id, val, isWal) {
+            const el = document.getElementById(id);
+            el.innerText = formatMB(val);
+            if (isWal) {
+                el.className = "storage-val";
+                if (val > 1000) el.classList.add("wal-crit");
+                else if (val > 300) el.classList.add("wal-warn");
+            }
+        }
+
+        function fetchStats() {
+            fetch('/api/stats')
+                .then(r => r.json())
+                .then(data => {
+                    const c = data.counts;
+                    const s = data.storage;
+                    const sys = data.system;
+
+                    document.getElementById('total-visited').innerText = formatNum(c.visited);
+                    document.getElementById('total-indexed').innerText = formatNum(c.indexed);
+                    document.getElementById('q-active').innerText = formatNum(c.queue.active);
+                    document.getElementById('q-pending').innerText = formatNum(c.queue.pending);
+                    document.getElementById('q-retries').innerText = formatNum(c.retries);
+
+                    document.getElementById('sys-cpu').innerText = sys.cpu + "%";
+                    document.getElementById('sys-ram').innerText = sys.ram + "%";
+                    document.getElementById('sys-disk').innerText = sys.disk + "%";
+
+                    updateStorage('sz-crawl-db', s.crawl.db, false);
+                    updateStorage('sz-crawl-wal', s.crawl.wal, true);
+                    updateStorage('sz-store-db', s.storage.db, false);
+                    updateStorage('sz-store-wal', s.storage.wal, true);
+                    updateStorage('sz-search-db', s.search.db, false);
+                    updateStorage('sz-search-wal', s.search.wal, true);
+
+                    const now = Date.now();
+                    const deltaMs = now - lastTime;
+                    
+                    if (lastCount > 0 && deltaMs > 0) {
+                        const deltaPages = c.visited - lastCount;
+                        if (deltaPages >= 0) {
+                            const ppm = Math.round((deltaPages / deltaMs) * 60000);
+                            document.getElementById('ppm').innerText = formatNum(ppm);
+                            
+                            const daily = ppm * 60 * 24;
+                            document.getElementById('daily-vol').innerText = formatNum(daily);
+
+                            if (chart.data.labels.length > historyLen) {
+                                chart.data.labels.shift();
+                                chart.data.datasets[0].data.shift();
+                            }
+                            chart.data.labels.push("");
+                            chart.data.datasets[0].data.push(ppm);
+                            chart.update();
+                        }
+                    }
+
+                    lastCount = c.visited;
+                    lastTime = now;
+                })
+                .catch(err => console.error(err));
+        }
+
+        setInterval(fetchStats, 2000);
+        fetchStats();
+    </script>
+</body>
+</html>

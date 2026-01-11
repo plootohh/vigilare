@@ -357,6 +357,12 @@
 
     <div class="main-container">
         <div class="results-column">
+            {% if suggestion %}
+            <div style="margin-bottom: 25px; padding: 15px; background: rgba(0, 237, 160, 0.05); border: 1px solid rgba(0, 237, 160, 0.2); border-radius: 8px;">
+                <span style="color: var(--text-muted);">Did you mean:</span> 
+                <a href="/search?q={{ suggestion }}" style="color: var(--text-accent); font-weight: 600; margin-left: 5px; font-style: italic;">{{ suggestion }}</a>
+            </div>
+            {% endif %}
             {% if count == '0' %}
                 <div class="result-item" style="pointer-events: none; border: none; background: transparent;">
                     <p style="color: var(--text-muted); font-size: 1.1rem;">No results found for <b style="color:var(--text-main)">{{ query }}</b>.</p>
@@ -365,7 +371,7 @@
                 {% for result in results %}
                 <div class="result-item">
                     <div class="result-meta">
-                        <img src="https://www.google.com/s2/favicons?domain={{ result.domain }}&sz=32" style="width: 16px; height: 16px; border-radius: 4px; vertical-align: middle; filter: saturate(0.8);" onerror="this.style.display='none'">
+                        <img src="/icon/{{ result.domain }}" loading="lazy" style="width: 16px; height: 16px; border-radius: 4px; vertical-align: middle; filter: saturate(0.8); background: #222;" onerror="this.style.display='none'">
                         <span class="result-url">{{ result.url }}</span>
                         {% if result.verified %}
                         <span class="verified-badge" title="Verified Authority">✓</span>

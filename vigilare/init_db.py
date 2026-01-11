@@ -57,10 +57,13 @@ def init_database():
             out_links INTEGER,
             crawled_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             crawl_epoch INTEGER DEFAULT 1,
-            last_seen_epoch INTEGER DEFAULT 1, 
-            domain_rank INTEGER DEFAULT 10000000 
+            last_seen_epoch INTEGER DEFAULT 1,
+            domain_rank INTEGER DEFAULT 10000000,
+            page_rank REAL DEFAULT 0.0,
+            content_hash INTEGER
         )
     """)
+    c.execute("CREATE INDEX IF NOT EXISTS idx_content_hash ON visited(content_hash)")
     
     c.execute("""
         CREATE TABLE IF NOT EXISTS domain_authority (
@@ -68,6 +71,19 @@ def init_database():
             rank INTEGER
         )
     """)
+    
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS link_graph (
+            source_domain TEXT,
+            target_domain TEXT,
+            source_url TEXT,
+            target_url TEXT,
+            PRIMARY KEY (source_url, target_url)
+        ) WITHOUT ROWID;
+    """)
+    c.execute("CREATE INDEX IF NOT EXISTS idx_graph_source ON link_graph(source_domain)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_graph_target ON link_graph(target_domain)")
+    
     conn.commit()
     conn.close()
 
@@ -114,6 +130,10 @@ def init_database():
             tokenize='unicode61 remove_diacritics 2' 
         )
     """)
+    
+    c.execute("DROP TABLE IF EXISTS search_vocab")
+    c.execute("CREATE VIRTUAL TABLE search_vocab USING fts5vocab(search_index, row)")
+    
     conn.commit()
     conn.close()
     

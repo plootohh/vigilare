@@ -20,7 +20,7 @@ from collections import defaultdict, deque
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
-from crawler.utils import canonicalise, compress_html, RotationalBloomFilter
+from crawler.utils import canonicalise, compress_html, RotationalBloomFilter, compute_simhash
 
 
 # --- LOGGING SETUP ---
@@ -239,6 +239,8 @@ def parse_worker():
                 if len(content) > config.MAX_TEXT_CHARS:
                     content = content[:config.MAX_TEXT_CHARS]
             
+            content_hash = compute_simhash(content)
+            
             links = []
             if FETCH_QUEUE.qsize() < 5000:
                 for node in tree.css('a[href]'):
@@ -256,6 +258,7 @@ def parse_worker():
                 'title': title,
                 'description': desc,
                 'content': content,
+                'content_hash': content_hash,
                 'raw_html': compress_html(raw_bytes), 
                 'headers': json.dumps(dict(result['headers'])),
                 'status': result['status'],
@@ -275,9 +278,25 @@ def parse_worker():
 # --- WORKER: DB WRITER ---
 def db_writer():
     logging.info(" [DB] Writer started.")
+    
+    seen_hashes = set()
+    try:
+        conn_pre = sqlite3.connect(config.DB_CRAWL, timeout=60)
+        cursor = conn_pre.execute("SELECT content_hash FROM visited WHERE content_hash IS NOT NULL LIMIT 1000000")
+        for row in cursor:
+            if row[0]:
+                seen_hashes.add(row[0])
+        conn_pre.close()
+        logging.info(f" [DB] Pre-loaded {len(seen_hashes)} content hashes.")
+    except Exception as e:
+        logging.warning(f" [DB] Hash pre-load skipped: {e}")
+
     conn_crawl = sqlite3.connect(config.DB_CRAWL, timeout=60)
     conn_crawl.execute("PRAGMA journal_mode=WAL")
     conn_crawl.execute("PRAGMA synchronous=OFF")
+    conn_crawl.execute("PRAGMA temp_store=MEMORY")
+    conn_crawl.execute("PRAGMA cache_size=-64000")
+    
     conn_storage = sqlite3.connect(config.DB_STORAGE, timeout=60)
     conn_storage.execute("PRAGMA journal_mode=WAL")
     conn_storage.execute("PRAGMA synchronous=OFF") 
@@ -295,25 +314,48 @@ def db_writer():
             batch_reserve = [] 
             batch_retries = []
             batch_reschedule = []
+            batch_links = []
 
             while not WRITE_QUEUE.empty() and len(batch_visited) < 2000:
                 msg_type, payload = WRITE_QUEUE.get()
                 
                 if msg_type == 'save_page':
                     p = payload
+                    
+                    is_duplicate = False
+                    if p['content_hash'] in seen_hashes:
+                        is_duplicate = True
+                    else:
+                        seen_hashes.add(p['content_hash'])
+                        if len(seen_hashes) > 1000000:
+                            seen_hashes.pop()
+
                     batch_visited.append((
                         p['url'], p['title'], p['description'], p['status'], 
                         None, p['out_links'], 
                         datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                        config.CRAWL_EPOCH, config.CRAWL_EPOCH
+                        config.CRAWL_EPOCH, config.CRAWL_EPOCH,
+                        10000000, 0.0,
+                        p['content_hash']
                     ))
-                    batch_storage.append((
-                        p['url'], p['raw_html'], p['content'], p['title'], p['headers'], 
-                        datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                    ))
+                    
+                    if not is_duplicate:
+                        batch_storage.append((
+                            p['url'], p['raw_html'], p['content'], p['title'], p['headers'], 
+                            datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                        ))
+                    else:
+                        pass
+
                     batch_status.append((2, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), p['url']))
                     
+                    src_domain = urlparse(p['url']).netloc
+                    
                     for link in p['links_found']:
+                        tgt_domain = urlparse(link).netloc
+                        
+                        if p['url'] != link:
+                            batch_links.append((src_domain, tgt_domain, p['url'], link))
                         with BLOOM_LOCK:
                             if not BLOOM.lookup(link):
                                 BLOOM.add(link)
@@ -340,15 +382,23 @@ def db_writer():
             if any([batch_visited, batch_status, batch_frontier, batch_reserve, batch_retries, batch_reschedule]):
                 try:
                     conn_crawl.execute("BEGIN IMMEDIATE")
+                    
                     if batch_visited:
                         conn_crawl.executemany("""
                             INSERT OR REPLACE INTO visited 
-                            (url, title, description, http_status, language, out_links, crawled_at, crawl_epoch, last_seen_epoch)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            (url, title, description, http_status, language, out_links, crawled_at, crawl_epoch, last_seen_epoch, domain_rank, page_rank, content_hash)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """, batch_visited)
                     
                     if batch_status:
                         conn_crawl.executemany("UPDATE frontier SET status=?, next_crawl_time=? WHERE url=?", batch_status)
+                    
+                    if batch_links:
+                        conn_crawl.executemany("""
+                            INSERT OR IGNORE INTO link_graph 
+                            (source_domain, target_domain, source_url, target_url)
+                            VALUES (?, ?, ?, ?)
+                        """, batch_links)
                     
                     if batch_frontier:
                         conn_crawl.executemany("INSERT OR IGNORE INTO frontier (url, domain) VALUES (?, ?)", batch_frontier)

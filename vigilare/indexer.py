@@ -5,11 +5,13 @@ import sys
 import config
 from datetime import datetime
 from langdetect import detect
+import networkx
 
 # --- CONFIGURATION ---
 BATCH_SIZE = 2500
 STATE_FILE = "indexer_state.txt"
 RECYCLE_CONN_EVERY = 100
+PAGERANK_INTERVAL = 600
 
 
 def get_storage_conn():
@@ -51,6 +53,44 @@ def update_last_indexed_id(rowid):
         pass
 
 
+def run_pagerank_job():
+    print("\n [RANK] Starting PageRank calculation...")
+    start_t = time.time()
+    
+    try:
+        uri_path = config.DB_CRAWL.replace("\\", "/")
+        conn = sqlite3.connect(f"file:{uri_path}", uri=True, timeout=60)
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT source_url, target_url FROM link_graph")
+        edges = cursor.fetchall()
+        conn.close()
+        
+        if not edges:
+            print(" [RANK] No links found in graph yet. Skipping.")
+            return
+
+        G = networkx.DiGraph()
+        G.add_edges_from(edges)
+        
+        scores = networkx.pagerank(G, alpha=0.85, max_iter=100)
+        
+        batch_updates = [(score * 100000, url) for url, score in scores.items()]
+        
+        conn_write = sqlite3.connect(config.DB_CRAWL, timeout=60)
+        conn_write.execute("PRAGMA journal_mode=WAL")
+        conn_write.execute("PRAGMA synchronous=OFF")
+        
+        conn_write.executemany("UPDATE visited SET page_rank = ? WHERE url = ?", batch_updates)
+        conn_write.commit()
+        conn_write.close()
+        
+        print(f" [RANK] Updated {len(batch_updates)} pages in {time.time() - start_t:.2f}s.")
+        
+    except Exception as e:
+        print(f" [RANK] Error: {e}")
+
+
 def run_indexer():
     print("--- Vigilare Indexer ---")
     
@@ -62,6 +102,7 @@ def run_indexer():
     print(f" [INFO] Resuming from Storage Row ID: {last_id}")
     
     batch_counter = 0
+    last_pagerank_time = time.time()
 
     while True:
         try:
@@ -73,6 +114,10 @@ def run_indexer():
                 conn_search = get_search_conn()
                 conn_crawl = get_crawl_conn()
                 batch_counter = 0
+            
+            if time.time() - last_pagerank_time > PAGERANK_INTERVAL:
+                run_pagerank_job()
+                last_pagerank_time = time.time()
 
             c_store = conn_storage.cursor()
             c_store.execute("""
@@ -105,7 +150,13 @@ def run_indexer():
                 if row_id > max_id_in_batch:
                     max_id_in_batch = row_id
                 
-                final_title = title if title else (text[:80].split('\n')[0] if text else url)
+                final_title = title if title else (url)
+                if not final_title and text:
+                    lines = text.split('\n')
+                    for line in lines[:3]:
+                        if line.strip():
+                            final_title = line.strip()[:80]
+                            break
 
                 lang = "unknown"
                 if text and len(text) > 200:

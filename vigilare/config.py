@@ -11,7 +11,7 @@ DB_SEARCH = os.path.join(DATA_DIR, "vigilare_search.db")
 LOG_PATH = os.path.join(DATA_DIR, "vigilare.log")
 
 # --- Crawler Identity ---
-USER_AGENT = "Mozilla/5.0 (compatible; Vigilare/0.1.2; +mailto:mailme31@proton.me)"
+USER_AGENT = "Mozilla/5.0 (compatible; Vigilare/0.1.3; +mailto:mailme31@proton.me)"
 
 # --- Tuning ---
 FETCH_THREADS = 150
@@ -24,3 +24,8 @@ MAX_TEXT_CHARS = 1_000_000
 MAX_PAGES_PER_DOMAIN = 10000
 CRAWL_DELAY = 0.5
 CRAWL_EPOCH = 1
+
+# --- Assets ---
+ICONS_DIR = os.path.join(DATA_DIR, "icons")
+if not os.path.exists(ICONS_DIR):
+    os.makedirs(ICONS_DIR)

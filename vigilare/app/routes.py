@@ -4,11 +4,15 @@ import config
 import re
 import math
 import tldextract
+import os
+import requests
+import difflib
 from flask import render_template, request, jsonify
 from markupsafe import Markup
 from app import app
 from urllib.parse import urlparse
 from datetime import datetime
+from flask import send_from_directory
 
 extract = tldextract.TLDExtract(cache_dir=None, suffix_list_urls=[])
 
@@ -78,6 +82,47 @@ def get_db_connection():
 # -------------------------
 # Query utilities
 # -------------------------
+def get_spelling_suggestion(conn, raw_query):
+    # 1. Tokenize
+    terms = normalise_tokens(raw_query)
+    if not terms:
+        return None
+    
+    corrections = {}
+    found_typo = False
+    
+    c = conn.cursor()
+    
+    for term in terms:
+        c.execute("SELECT count(*) FROM search_vocab WHERE term = ?", (term,))
+        if c.fetchone()[0] > 0:
+            corrections[term] = term
+            continue
+            
+        found_typo = True
+        
+        c.execute("SELECT term FROM search_vocab WHERE term LIKE ? LIMIT 50", (f"{term[0]}%",))
+        candidates = [r[0] for r in c.fetchall()]
+        
+        matches = difflib.get_close_matches(term, candidates, n=1, cutoff=0.75)
+        
+        if matches:
+            corrections[term] = matches[0]
+        else:
+            corrections[term] = term
+            
+    if found_typo:
+        new_query = raw_query
+        for wrong, right in corrections.items():
+            if wrong != right:
+                new_query = re.sub(r'\b' + re.escape(wrong) + r'\b', right, new_query)
+        
+        if new_query != raw_query:
+            return new_query
+            
+    return None
+
+
 def normalise_tokens(raw):
     raw = raw.lower()
     raw = re.sub(r"[^a-z0-9\s]", " ", raw)
@@ -101,6 +146,56 @@ def extract_site_directives(raw):
         if "." in t and len(t) > 4:
             return t
     return None
+
+
+# --- Contextual Snippet Generator ---
+def generate_contextual_snippet(content, query_terms):
+    if not content or not query_terms:
+        return ""
+    
+    text = " ".join(content.split())
+    
+    best_window = ""
+    max_score = 0
+    lower_text = text.lower()
+    
+    positions = []
+    for term in query_terms:
+        start = 0
+        while True:
+            idx = lower_text.find(term, start)
+            if idx == -1: 
+                break
+            positions.append(idx)
+            start = idx + 1
+    
+    if not positions:
+        return text[:250] + "..."
+
+    positions.sort()
+    
+    for pos in positions:
+        start = max(0, pos - 60)
+        end = min(len(text), pos + 240)
+        window = text[start:end]
+        
+        score = 0
+        window_lower = window.lower()
+        for term in query_terms:
+            score += window_lower.count(term)
+        
+        if score > max_score:
+            max_score = score
+            best_window = window
+
+    if best_window:
+        for term in query_terms:
+            pattern = re.compile(re.escape(term), re.IGNORECASE)
+            best_window = pattern.sub(f"<b>{term}</b>", best_window)
+            
+        return "..." + best_window + "..."
+        
+    return text[:250] + "..."
 
 
 def expand_terms(base_terms):
@@ -175,6 +270,12 @@ def authority_score(rank):
         return 0.0
     raw_score = 160.0 / (1.0 + math.log10(float(rank) + 10))
     return min(raw_score, 60.0)
+
+
+def pagerank_score(pr_val):
+    if not pr_val or pr_val <= 0:
+        return 0.0
+    return math.log(pr_val * 10 + 1) * 15.0
 
 
 def freshness_score(crawled_at):
@@ -301,7 +402,15 @@ def calculate_score(conn, row, terms, weights, intent, nav_slug, domain_counts,
         return 0.0
 
     score = 100.0
+    
+    try:
+        raw_bm25 = float(row.get("bm25") or 0)
+        score += max(0, (20.0 - raw_bm25) * 2.0)
+    except Exception:
+        pass
+    
     score += authority_score(row.get("domain_rank"))
+    score += pagerank_score(row.get("page_rank"))
     score += freshness_score(row.get("crawled_at"))
     
     score += tld_bias(suffix)
@@ -311,6 +420,7 @@ def calculate_score(conn, row, terms, weights, intent, nav_slug, domain_counts,
     score += field_score(row, terms, weights)
     score += intent_boost(intent, domain, nav_slug)
     
+    domain = urlparse(row.get("url")).netloc
     score -= domain_counts.get(domain, 0) * 15.0
 
     try:
@@ -388,10 +498,12 @@ def search():
                 search_index.url,
                 search_index.title,
                 search_index.description,
-                snippet(search_index, 3, '<b>', '</b>', '...', 64) AS snippet,
+                substr(search_index.content, 1, 5000) as content_sample,
                 crawl_db.visited.crawled_at,
                 crawl_db.visited.language,
-                crawl_db.visited.domain_rank
+                crawl_db.visited.domain_rank,
+                crawl_db.visited.page_rank,     
+                bm25(search_index) as bm25      
             FROM search_index
             JOIN crawl_db.visited ON search_index.url = crawl_db.visited.url
             WHERE search_index MATCH ?
@@ -401,9 +513,12 @@ def search():
         fts_query = build_fts_query(base_terms, mode="AND")
         c.execute(sql_base, (fts_query, CANDIDATE_POOL_SIZE))
         rows = c.fetchall()
+        
+        suggestion = None
+        if len(rows) < 5:
+            suggestion = get_spelling_suggestion(conn, raw_query)
 
         if len(rows) < 5 and len(base_terms) > 1:
-            print(" [DEBUG] Low results, triggering OR fallback.")
             fallback_triggered = True
             loose_query = build_fts_query(base_terms, mode="OR")
             c.execute(sql_base, (loose_query, CANDIDATE_POOL_SIZE))
@@ -454,9 +569,10 @@ def search():
         end_idx = start_idx + PER_PAGE
 
         for score, r in final_scored[start_idx:end_idx]:
-            clean_snip = r["snippet"] or ""
-            if not clean_snip and r.get("description"):
-                clean_snip = r["description"][:200] + "..."
+            clean_snip = generate_contextual_snippet(r["content_sample"], base_terms)
+            
+            if (not clean_snip or len(clean_snip) < 20) and r.get("description"):
+                clean_snip = r["description"][:250] + "..."
             
             title = r["title"] or r["url"]
             domain = urlparse(r["url"]).netloc
@@ -487,7 +603,8 @@ def search():
         count=total_estimated,
         time=elapsed,
         page=page,
-        total_pages=total_pages
+        total_pages=total_pages,
+        suggestion=suggestion
     )
 
 
@@ -508,3 +625,26 @@ def suggest():
     finally:
         if conn:
             conn.close()
+
+
+@app.route("/icon/<domain>")
+def icon_proxy(domain):
+    domain = re.sub(r'[^a-zA-Z0-9.-]', '', domain)[:50]
+    filename = f"{domain}.ico"
+    filepath = os.path.join(config.ICONS_DIR, filename)
+
+    if os.path.exists(filepath):
+        return send_from_directory(config.ICONS_DIR, filename)
+
+    try:
+        remote_url = f"https://www.google.com/s2/favicons?domain={domain}&sz=32"
+        r = requests.get(remote_url, timeout=2)
+        
+        if r.status_code == 200:
+            with open(filepath, 'wb') as f:
+                f.write(r.content)
+            return send_from_directory(config.ICONS_DIR, filename)
+    except Exception:
+        pass
+
+    return "", 404

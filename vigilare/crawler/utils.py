@@ -4,6 +4,8 @@ import mmh3
 import pickle
 import os
 import zlib
+import re
+import hashlib
 from urllib.parse import urlparse, parse_qsl, urlencode
 
 
@@ -128,8 +130,10 @@ def canonicalise(url):
         url = str(url).strip()
         if not url:
             return None
+        
         if '#' in url:
             url = url.split('#')[0]
+        
         parsed = urlparse(url)
         if parsed.scheme not in ("http", "https"):
             return None
@@ -139,8 +143,7 @@ def canonicalise(url):
             return None
         netloc = netloc.lower()
         if parsed.port:
-            if (parsed.scheme == "http" and parsed.port != 80) or \
-                (parsed.scheme == "https" and parsed.port != 443):
+            if (parsed.scheme == "http" and parsed.port != 80) or (parsed.scheme == "https" and parsed.port != 443):
                 netloc += f":{parsed.port}"
         
         path = parsed.path.replace("//", "/")
@@ -151,7 +154,8 @@ def canonicalise(url):
             '.png','.jpg','.jpeg','.gif','.css','.js','.ico','.svg',
             '.pdf','.zip','.exe','.mp4','.mp3','.wav','.avi','.mov',
             '.xml','.json','.txt','.bmp','.tif','.tiff','.woff','.woff2',
-            '.ttf','.eot','.dmg','.iso','.bin','.dat','.apk','.rar'
+            '.ttf','.eot','.dmg','.iso','.bin','.dat','.apk','.rar',
+            '.tar','.gz','.7z'
         }
         if any(path.lower().endswith(ext) for ext in ignore_exts):
             return None
@@ -160,18 +164,62 @@ def canonicalise(url):
         if parsed.query:
             qs = parse_qsl(parsed.query)
             filtered_qs = []
+            
+            blocked_params = {
+                'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
+                'fbclid', 'gclid', 'yclid', '_ga', 'ref', 'source', 'sess', 'session',
+                'sid', 'phpsessid', 'jsessionid', 'ad_id', 'campaign_id'
+            }
+            
             for k, v in qs:
                 k_low = k.lower()
-                if k_low.startswith("utm_") or k_low in {'fbclid', 'gclid', 'ref', 'source', 'yclid', '_ga'}:
+                if k_low in blocked_params or k_low.startswith("utm_"):
                     continue
                 filtered_qs.append((k, v))
+            
             if filtered_qs:
-                filtered_qs.sort() 
+                filtered_qs.sort()
                 clean_query = urlencode(filtered_qs)
 
         clean_url = f"{parsed.scheme}://{netloc}{path}"
         if clean_query:
             clean_url += f"?{clean_query}"
+            
         return clean_url
     except Exception:
         return None
+
+
+class SimHash:
+    def __init__(self):
+        pass
+
+    def _string_hash(self, v):
+        return int(hashlib.md5(v.encode('utf-8')).hexdigest(), 16)
+
+    def compute(self, text):
+        text = re.sub(r'[^\w\s]', '', text.lower())
+        tokens = text.split()
+        
+        if not tokens:
+            return 0
+
+        v = [0] * 64
+        for t in tokens:
+            t_hash = self._string_hash(t)
+            for i in range(64):
+                bit = (t_hash >> i) & 1
+                if bit:
+                    v[i] += 1
+                else:
+                    v[i] -= 1
+        
+        fingerprint = 0
+        for i in range(64):
+            if v[i] > 0:
+                fingerprint |= (1 << i)
+                
+        return fingerprint
+
+
+compute_simhash = SimHash().compute
