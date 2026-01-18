@@ -69,25 +69,34 @@ A standalone service that bridges the gap between raw storage and the search ind
 
 ```text
 vigilare/
-├── app/                  # Web Interface Logic
-│   ├── templates/        # HTML Frontend
-│   └── routes.py         # Search & Ranking Logic
-├── crawler/              # Spider Logic
-│   ├── bot.py            # Core Crawling Loop (Fetcher/Parser/Writer)
-│   └── utils.py          # Bloom Filters & URL Canonicalisation
-├── data/                 # Persistent Storage (Ignored by Git)
-│   ├── vigilare_crawl.db   # Frontier & Metadata
-│   ├── vigilare_storage.db # Compressed HTML Content
-│   ├── vigilare_search.db  # FTS5 Search Index
-│   └── vigilare.log        # Debug Logs
-├── config.py             # Global Configuration & Tuning
-├── flush_wal.py          # Manual WAL Clean for Debugging Purposes
-├── indexer.py            # Service: Processes raw HTML into Search Index
-├── indexer_state.txt     # Persistent Storage of Indexer Progress
-├── init_db.py            # Setup: Creates Schema & Injects Seeds
-├── monitor.py            # Real-time System Health Dashboard
-├── run_crawler.py        # Entry Point: Launches the Spider threads
-└── run_web.py            # Entry Point: Starts the Flask Web Server
+├── app/                      # Web Interface Logic
+│   ├── static/
+│   │   └── js/               # Local JavaScript Dependencies
+│   │       └── chart.js      # Offline Charting Library
+│   ├── templates/            # HTML Frontend
+│   │   ├── dashboard.html    # Dashboard Interface
+│   │   └── index.html        # Search Engine Interface
+│   └── routes.py             # Flask Routes & Search Logic
+├── crawler/                  # Crawler Logic
+│   ├── bot.py                # Core Crawling Loop (Fetcher/Parser/Writer)
+│   └── utils.py              # Bloom Filters & URL Canonicalisation
+├── data/                     # Persistent Storage (Ignored by Git)
+│   ├── icons/                # Cached Favicons from crawled sites
+│   ├── bloom_cold.bin        # Persistent Bloom Filter (Visited URLs)
+│   ├── bloom_hot.bin         # Temporary Bloom Filter
+│   ├── vigilare.log          # System Debug Logs
+│   ├── vigilare_crawl.db     # Frontier & Metadata
+│   ├── vigilare_storage.db   # Compressed HTML Content
+│   └── vigilare_search.db    # FTS5 Search Index
+├── config.py                 # Global Configuration & Tuning
+├── dashboard.py              # System Dashboard (Flask)
+├── flush_wal.py              # Manual WAL Clean
+├── indexer.py                # Processes raw HTML into Search Index
+├── indexer_state.txt         # Persistent Storage of Indexer Progress
+├── init_db.py                # Creates Schema & Injects Seeds
+├── monitor.py                # CLI Real-time System Health Monitor
+├── run_crawler.py            # Launches the Crawler threads
+└── run_web.py                # Starts the Search Engine
 ```
 
 ---
