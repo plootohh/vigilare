@@ -83,7 +83,7 @@ def get_db_connection():
 # Query utilities
 # -------------------------
 def get_spelling_suggestion(conn, raw_query):
-    # 1. Tokenize
+    # 1. Tokenise
     terms = normalise_tokens(raw_query)
     if not terms:
         return None
