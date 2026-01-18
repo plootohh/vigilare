@@ -20,6 +20,13 @@ MANUAL_SEEDS = [
     "https://alltop.com", "https://drudgereport.com"
 ]
 
+IGNORE_TERMS = {
+    'cdn', 'dns', 'static', 'assets', 'media', 
+    'ads', 'adsystem', 'doubleclick', 'adserver', 'tracker', 'pixel',
+    'telemetry', 'analytics', 'metrics', 'stats',
+    'hosting', 'parking', 'slb'
+}
+
 
 def init_database():
     print("--- Initialising Vigilare Database ---")
@@ -60,7 +67,7 @@ def init_database():
             last_seen_epoch INTEGER DEFAULT 1,
             domain_rank INTEGER DEFAULT 10000000,
             page_rank REAL DEFAULT 0.0,
-            content_hash INTEGER
+            content_hash TEXT
         )
     """)
     c.execute("CREATE INDEX IF NOT EXISTS idx_content_hash ON visited(content_hash)")
@@ -174,6 +181,11 @@ def populate_seeds_and_ranks():
                 if len(parts) == 2:
                     rank = int(parts[0])
                     domain = parts[1]
+                    
+                    domain_tokens = set(domain.lower().split('.'))
+                    
+                    if not domain_tokens.isdisjoint(IGNORE_TERMS):
+                        continue
                     
                     if rank <= 1000000:
                         rank_batch.append((domain, rank))

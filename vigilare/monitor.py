@@ -84,7 +84,6 @@ def monitor():
     
     speed_history = deque(maxlen=AVG_WINDOW_SIZE)
     
-    # Initial Fetch
     initial_stats = get_stats_batch()
     last_crawled = initial_stats['visited']
     last_time = time.time()
@@ -111,7 +110,6 @@ def monitor():
             avg_ppm = sum(speed_history) / len(speed_history) if speed_history else 0
             daily_vol = avg_ppm * 60 * 24
 
-            # Display
             os.system('cls' if os.name == 'nt' else 'clear')
             
             print("================== VIGILARE MONITOR =====================")

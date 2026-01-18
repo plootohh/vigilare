@@ -2,6 +2,7 @@ import threading
 import time
 import sys
 import os
+import sqlite3
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -90,12 +91,19 @@ def main():
     try:
         monitor_loop()
     except KeyboardInterrupt:
-        sys.stdout.write("\n\n [STOP] Shutdown signal received!")
-        sys.stdout.flush()
-        print("\n [STOP] Waiting for queues to drain (5s)...")
-        time.sleep(2) 
-        print(" [STOP] Shutdown complete.")
-        sys.exit(0)
+        print("\n [STOP] Crawler stopping...")
+        
+        print(" [STOP] Checkpointing databases (Merging WAL files)...")
+        try:
+            for db_path in [config.DB_CRAWL, config.DB_STORAGE, config.DB_SEARCH]:
+                if os.path.exists(db_path):
+                    conn = sqlite3.connect(db_path)
+                    conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+                    conn.close()
+        except Exception as e:
+            print(f" [WARN] Cleanup failed: {e}")
+
+        print(" [STOP] Crawler stopped.")
 
 
 if __name__ == "__main__":

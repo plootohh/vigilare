@@ -4,9 +4,11 @@ import mmh3
 import pickle
 import os
 import zlib
-import re
 import hashlib
+import string
 from urllib.parse import urlparse, parse_qsl, urlencode
+
+PUNCTUATION_TABLE = str.maketrans('', '', string.punctuation)
 
 
 class RotationalBloomFilter:
@@ -198,11 +200,14 @@ class SimHash:
         return int(hashlib.md5(v.encode('utf-8')).hexdigest(), 16)
 
     def compute(self, text):
-        text = re.sub(r'[^\w\s]', '', text.lower())
+        if not text:
+            return "0"
+        
+        text = text.lower().translate(PUNCTUATION_TABLE)
         tokens = text.split()
         
         if not tokens:
-            return 0
+            return "0"
 
         v = [0] * 64
         for t in tokens:
@@ -219,7 +224,6 @@ class SimHash:
             if v[i] > 0:
                 fingerprint |= (1 << i)
                 
-        return fingerprint
-
+        return hex(fingerprint)[2:]
 
 compute_simhash = SimHash().compute

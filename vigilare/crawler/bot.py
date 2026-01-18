@@ -105,7 +105,13 @@ class LegacySSLAdapter(HTTPAdapter):
 
 # --- NETWORK ---
 SESSION = requests.Session()
-retries = Retry(total=0, backoff_factor=0.1, status_forcelist=[500, 502, 503, 504])
+retries = Retry(
+    total=3,
+    connect=2,
+    read=1,
+    backoff_factor=0.5,
+    status_forcelist=[500, 502, 503, 504]
+)
 adapter = LegacySSLAdapter(max_retries=retries, pool_connections=config.FETCH_THREADS, pool_maxsize=config.FETCH_THREADS)
 SESSION.mount("http://", adapter)
 SESSION.mount("https://", adapter)
@@ -115,6 +121,15 @@ SESSION.mount("https://", adapter)
 class RobotParser(robotparser.RobotFileParser):
     def __init__(self, url=''):
         super().__init__(url)
+        self.allow_all = False
+        self.disallow_all = False
+
+    def can_fetch(self, useragent, url):
+        if self.disallow_all:
+            return False
+        if self.allow_all:
+            return True
+        return super().can_fetch(useragent, url)
 
 
 ROBOTS_CACHE = {}
@@ -133,12 +148,18 @@ def check_robots_allow(domain, url):
     
     if not rp:
         logging.debug(f"[Robots] Fetching for {domain}")
-        rp = RobotParser()
-        rp.set_url(f"http://{domain}/robots.txt")
         try:
-            rp.read()
+            r = SESSION.get(f"http://{domain}/robots.txt", timeout=6, stream=False)
+            rp = RobotParser()
+            if r.status_code in [401, 403]:
+                rp.disallow_all = True
+            elif r.status_code >= 400:
+                rp.allow_all = True
+            else:
+                rp.parse(r.text.splitlines())
         except Exception as e:
-            logging.debug(f"[Robots] Failed {domain}: {e}")
+            logging.debug(f"[Robots] Net Fail {domain}: {e}")
+            return None
         
         with ROBOTS_LOCK:
             ROBOTS_CACHE[domain] = (rp, now)
@@ -177,7 +198,14 @@ def fetch_worker():
                 FETCH_QUEUE.task_done()
                 continue
 
-            if not check_robots_allow(domain, url):
+            allowed = check_robots_allow(domain, url)
+            
+            if allowed is None:
+                WRITE_QUEUE.put(('retry', (url, retry_count + 1)))
+                FETCH_QUEUE.task_done()
+                continue
+                
+            if not allowed:
                 WRITE_QUEUE.put(('status_update', (3, url)))
                 FETCH_QUEUE.task_done()
                 continue
@@ -285,7 +313,7 @@ def db_writer():
         cursor = conn_pre.execute("SELECT content_hash FROM visited WHERE content_hash IS NOT NULL LIMIT 1000000")
         for row in cursor:
             if row[0]:
-                seen_hashes.add(row[0])
+                seen_hashes.add(str(row[0]))
         conn_pre.close()
         logging.info(f" [DB] Pre-loaded {len(seen_hashes)} content hashes.")
     except Exception as e:
@@ -294,8 +322,6 @@ def db_writer():
     conn_crawl = sqlite3.connect(config.DB_CRAWL, timeout=60)
     conn_crawl.execute("PRAGMA journal_mode=WAL")
     conn_crawl.execute("PRAGMA synchronous=OFF")
-    conn_crawl.execute("PRAGMA temp_store=MEMORY")
-    conn_crawl.execute("PRAGMA cache_size=-64000")
     
     conn_storage = sqlite3.connect(config.DB_STORAGE, timeout=60)
     conn_storage.execute("PRAGMA journal_mode=WAL")
@@ -322,11 +348,13 @@ def db_writer():
                 if msg_type == 'save_page':
                     p = payload
                     
+                    safe_hash = "h:" + str(p['content_hash'])
+
                     is_duplicate = False
-                    if p['content_hash'] in seen_hashes:
+                    if safe_hash in seen_hashes:
                         is_duplicate = True
                     else:
-                        seen_hashes.add(p['content_hash'])
+                        seen_hashes.add(safe_hash)
                         if len(seen_hashes) > 1000000:
                             seen_hashes.pop()
 
@@ -336,7 +364,7 @@ def db_writer():
                         datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                         config.CRAWL_EPOCH, config.CRAWL_EPOCH,
                         10000000, 0.0,
-                        p['content_hash']
+                        safe_hash 
                     ))
                     
                     if not is_duplicate:
@@ -344,8 +372,6 @@ def db_writer():
                             p['url'], p['raw_html'], p['content'], p['title'], p['headers'], 
                             datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                         ))
-                    else:
-                        pass
 
                     batch_status.append((2, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), p['url']))
                     
@@ -414,7 +440,7 @@ def db_writer():
                         
                     conn_crawl.commit()
                 except Exception as e:
-                    logging.error(f"Crawl DB Write Error: {e}", exc_info=True)
+                    logging.error(f"[DB CRITICAL] Crawl DB Write Failed: {e}", exc_info=True)
                     try:
                         conn_crawl.rollback()
                     except Exception:
@@ -429,7 +455,7 @@ def db_writer():
                         """, batch_storage)
                         conn_storage.commit()
                 except Exception as e:
-                    logging.error(f"Storage DB Write Error: {e}", exc_info=True)
+                    logging.error(f"[DB CRITICAL] Storage DB Write Failed: {e}", exc_info=True)
 
             if time.time() - last_bloom_save > 300:
                 if hasattr(BLOOM, 'save'):
@@ -499,7 +525,7 @@ def download_page(url):
         with SESSION.get(
             url, 
             headers={'User-Agent': config.USER_AGENT}, 
-            timeout=(4, 10), 
+            timeout=(2, 5), 
             stream=True
         ) as r:
             
