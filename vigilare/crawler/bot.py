@@ -40,8 +40,8 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # --- QUEUES ---
 FETCH_QUEUE = queue.Queue(maxsize=5000)
-PARSE_QUEUE = queue.Queue()
-WRITE_QUEUE = queue.Queue()
+PARSE_QUEUE = queue.Queue(maxsize=5000)
+WRITE_QUEUE = queue.Queue(maxsize=5000)
 
 # --- BLOOM FILTER ---
 BLOOM = RotationalBloomFilter(100_000_000, 7, data_dir=config.DATA_DIR)
