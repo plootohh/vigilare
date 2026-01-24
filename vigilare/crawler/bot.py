@@ -342,7 +342,7 @@ def db_writer():
             batch_reschedule = []
             batch_links = []
 
-            while not WRITE_QUEUE.empty() and len(batch_visited) < 2000:
+            while not WRITE_QUEUE.empty() and len(batch_visited) < 500:
                 msg_type, payload = WRITE_QUEUE.get()
                 
                 if msg_type == 'save_page':
@@ -460,6 +460,14 @@ def db_writer():
             if time.time() - last_bloom_save > 300:
                 if hasattr(BLOOM, 'save'):
                     BLOOM.save()
+                
+                try:
+                    conn_crawl.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+                    conn_storage.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+                    logging.info(" [DB] WAL Checkpoint (Truncate) executed.")
+                except Exception as e:
+                    logging.warning(f" [DB] WAL Checkpoint skipped: {e}")
+
                 last_bloom_save = time.time()
             else:
                 time.sleep(0.05)
