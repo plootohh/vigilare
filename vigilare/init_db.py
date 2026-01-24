@@ -139,7 +139,12 @@ def init_database():
     """)
     
     c.execute("DROP TABLE IF EXISTS search_vocab")
-    c.execute("CREATE VIRTUAL TABLE search_vocab USING fts5vocab(search_index, row)")
+    c.execute("""
+        CREATE TABLE search_vocab (
+            term TEXT PRIMARY KEY,
+            doc_freq INTEGER
+        )
+    """)
     
     conn.commit()
     conn.close()
