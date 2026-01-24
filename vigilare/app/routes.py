@@ -29,7 +29,9 @@ RATE_LIMIT = {}
 RATE_LIMIT_WINDOW = 60
 RATE_LIMIT_MAX = 30
 
-
+# -------------------------
+# Rate Limiter
+# -------------------------
 def check_rate_limit(ip):
     now = time.time()
     if len(RATE_LIMIT) > 10000:
@@ -83,7 +85,6 @@ def get_db_connection():
 # Query utilities
 # -------------------------
 def get_spelling_suggestion(conn, raw_query):
-    # 1. Tokenise
     terms = normalise_tokens(raw_query)
     if not terms:
         return None
@@ -213,10 +214,8 @@ def build_fts_query(base_terms, mode="AND"):
     groups = []
     for t in base_terms:
         variants = [f'"{t}"', f'"{t}"*']
-        
         for s in SYNONYMS.get(t, []):
             variants.append(f'"{s}"')
-            
         groups.append("(" + " OR ".join(variants) + ")")
     
     join_operator = " AND " if mode == "AND" else " OR "
@@ -305,17 +304,25 @@ def tld_bias(suffix):
 def url_quality(parsed_obj, raw_url):
     try:
         score = 0.0
-        depth = parsed_obj.path.count("/")
-        score -= max(0, depth - 3) * 4.0
+        path = parsed_obj.path.strip("/")
         
-        if "?" in raw_url:
-            score -= 12.0
+        depth = path.count("/")
+        if depth > 0:
+            score -= depth * 15.0
+        
+        # 2. Length Penalty
+        if len(raw_url) > 60:
+            score -= 10.0
+        if len(raw_url) > 90:
+            score -= 20.0
             
-        tokens = tokenise(parsed_obj.path)
-        score += min(10.0, len(tokens) * 2.0)
-        
-        if parsed_obj.path in ("", "/"):
-            score += 12.0
+        if "?" in raw_url:
+            score -= 15.0
+
+        if path == "":
+            score += 150.0
+        elif depth == 0:
+            score += 40.0
             
         return score
     except Exception:
@@ -337,11 +344,13 @@ def field_score(row, terms, weights):
         
     title_hits = sum(weights.get(t, 0.0) for t in terms if t in title)
     desc_hits = sum(weights.get(t, 0.0) for t in terms if t in desc)
+    
     url_hits = sum(weights.get(t, 0.0) for t in terms if t in url)
+    url_score = min(saturation(url_hits, 4.0) * 30.0, 5.0) 
     
     score += saturation(title_hits, 4.0) * 70.0
     score += saturation(desc_hits, 6.0) * 35.0
-    score += saturation(url_hits, 4.0) * 30.0
+    score += url_score
     
     score += multi_term_proximity(title, terms) * 1.6
     score += multi_term_proximity(desc, terms)
@@ -353,7 +362,7 @@ def intent_boost(intent, netloc, nav_slug):
     if intent == "navigational" and nav_slug:
         try:
             if nav_slug in netloc:
-                return 180.0
+                return 250.0
         except Exception:
             pass
     return 0.0
@@ -374,18 +383,12 @@ def language_score(row_lang, user_lang):
         return 0.0
 
 
-# -------------------------
-# Domain/brand helpers
-# -------------------------
 def matches_brand_phrase(raw_normalised_no_space, row_domain_base):
     if not row_domain_base:
         return False
     return raw_normalised_no_space == row_domain_base
 
 
-# -------------------------
-# Final score aggregation
-# -------------------------
 def calculate_score(conn, row, terms, weights, intent, nav_slug, domain_counts,
                     site_directive=None, raw_brand_normalised="",
                     user_lang="en"):
@@ -426,6 +429,9 @@ def calculate_score(conn, row, terms, weights, intent, nav_slug, domain_counts,
     try:
         is_root = parsed.path in ("", "/")
         
+        if is_root and len(parsed.query) == 0:
+            score += 20.0
+        
         if site_directive:
             sd = site_directive.lower().rstrip("/")
             if sd and (sd in domain or sd == row_domain_base):
@@ -433,13 +439,16 @@ def calculate_score(conn, row, terms, weights, intent, nav_slug, domain_counts,
                     score += 240.0
                 else:
                     score += 80.0
-                    
+        
         if raw_brand_normalised:
             if matches_brand_phrase(raw_brand_normalised, row_domain_base):
                 if is_root:
-                    score += 220.0
+                    score += 350.0
+                    
+                    if extracted.subdomain == '' or extracted.subdomain == 'www':
+                        score += 100.0
                 else:
-                    score += 40.0
+                    score += 50.0
     except Exception:
         pass
 
@@ -484,6 +493,10 @@ def search():
     
     intent = "navigational" if len(base_terms) <= 2 else "informational"
     raw_brand_normalised = normalise_for_brand(raw_query)
+    
+    nav_slug = None
+    if intent == "navigational":
+        nav_slug = raw_brand_normalised
 
     conn = get_db_connection()
     c = conn.cursor()
@@ -494,19 +507,20 @@ def search():
     
     try:
         sql_base = """
-            SELECT
+            SELECT 
                 search_index.url,
                 search_index.title,
                 search_index.description,
-                substr(search_index.content, 1, 5000) as content_sample,
+                snippet(search_index, 3, '<b>', '</b>', '...', 35) as snippet,
                 crawl_db.visited.crawled_at,
                 crawl_db.visited.language,
                 crawl_db.visited.domain_rank,
                 crawl_db.visited.page_rank,     
-                bm25(search_index) as bm25      
+                bm25(search_index, 2.0, 10.0, 5.0, 1.0, 8.0, 4.0, 2.0) as bm25      
             FROM search_index
             JOIN crawl_db.visited ON search_index.url = crawl_db.visited.url
             WHERE search_index MATCH ?
+            ORDER BY bm25 ASC
             LIMIT ?
         """
 
@@ -518,7 +532,8 @@ def search():
         if len(rows) < 5:
             suggestion = get_spelling_suggestion(conn, raw_query)
 
-        if len(rows) < 5 and len(base_terms) > 1:
+        if len(rows) < 5 and len(base_terms) > 1 and not suggestion:
+            print(f" [DEBUG] Triggering Fallback for '{raw_query}'")
             fallback_triggered = True
             loose_query = build_fts_query(base_terms, mode="OR")
             c.execute(sql_base, (loose_query, CANDIDATE_POOL_SIZE))
@@ -536,7 +551,8 @@ def search():
             seen_norm.add(norm)
 
             score = calculate_score(
-                conn, row_dict, expanded_terms, weights, intent, nav_slug=None, 
+                conn, row_dict, expanded_terms, weights, intent, 
+                nav_slug=nav_slug,
                 domain_counts={}, 
                 site_directive=site_directive, 
                 raw_brand_normalised=raw_brand_normalised,
@@ -569,9 +585,9 @@ def search():
         end_idx = start_idx + PER_PAGE
 
         for score, r in final_scored[start_idx:end_idx]:
-            clean_snip = generate_contextual_snippet(r["content_sample"], base_terms)
+            clean_snip = r["snippet"]
             
-            if (not clean_snip or len(clean_snip) < 20) and r.get("description"):
+            if (not clean_snip or len(clean_snip) < 10) and r.get("description"):
                 clean_snip = r["description"][:250] + "..."
             
             title = r["title"] or r["url"]
@@ -639,7 +655,6 @@ def icon_proxy(domain):
     try:
         remote_url = f"https://www.google.com/s2/favicons?domain={domain}&sz=32"
         r = requests.get(remote_url, timeout=2)
-        
         if r.status_code == 200:
             with open(filepath, 'wb') as f:
                 f.write(r.content)
