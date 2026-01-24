@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Vigilare | Dashboard</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+    <script src="/static/js/chart.js"></script>
     <style>
         :root {
             --bg-void: #0a0a0a;
@@ -183,11 +183,11 @@
     </div>
 
     <script>
-        const HISTORY_SECONDS = 300;
+        const CHART_SECONDS = 300;
+        const CALC_WINDOW_MS = 60000;
         
         let chart = null;
         const statsHistory = []; 
-        const WINDOW_MS = HISTORY_SECONDS * 1000; 
 
         window.addEventListener('load', function() {
             try {
@@ -204,10 +204,10 @@
                 chart = new Chart(ctx, {
                     type: 'line',
                     data: {
-                        labels: Array(HISTORY_SECONDS).fill(""),
+                        labels: Array(CHART_SECONDS).fill(""),
                         datasets: [{
                             label: 'Avg PPM',
-                            data: Array(HISTORY_SECONDS).fill(0),
+                            data: Array(CHART_SECONDS).fill(0),
                             borderColor: '#00eda0',
                             backgroundColor: gradient,
                             borderWidth: 2,
@@ -271,7 +271,7 @@
                     const now = Date.now();
                     statsHistory.push({ t: now, v: currentVisited });
 
-                    while (statsHistory.length > 0 && (now - statsHistory[0].t > WINDOW_MS)) {
+                    while (statsHistory.length > 0 && (now - statsHistory[0].t > CALC_WINDOW_MS)) {
                         statsHistory.shift();
                     }
 
