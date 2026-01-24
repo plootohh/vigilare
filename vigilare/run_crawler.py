@@ -3,6 +3,7 @@ import time
 import sys
 import os
 import sqlite3
+import queue
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -24,27 +25,24 @@ PARSE_THREADS = config.PARSE_THREADS
 
 def monitor_loop():
     start_time = time.time()
-    try:
-        while True:
-            uptime = int(time.time() - start_time)
-            m, s = divmod(uptime, 60)
-            h, m = divmod(m, 60)
-            
-            q_fetch = FETCH_QUEUE.qsize()
-            q_parse = PARSE_QUEUE.qsize()
-            q_write = WRITE_QUEUE.qsize()
-            
-            sys.stdout.write(
-                f"\r[RUNTIME {h:02}:{m:02}:{s:02}] "
-                f"FetchQ: {q_fetch:<6} | "
-                f"ParseQ: {q_parse:<4} | "
-                f"WriteQ: {q_write:<4} | "
-                f"Active Threads: {threading.active_count():<3}      "
-            )
-            sys.stdout.flush()
-            time.sleep(1)
-    except KeyboardInterrupt:
-        pass
+    while True:
+        uptime = int(time.time() - start_time)
+        m, s = divmod(uptime, 60)
+        h, m = divmod(m, 60)
+        
+        q_fetch = FETCH_QUEUE.qsize()
+        q_parse = PARSE_QUEUE.qsize()
+        q_write = WRITE_QUEUE.qsize()
+        
+        sys.stdout.write(
+            f"\r[RUNTIME {h:02}:{m:02}:{s:02}] "
+            f"FetchQ: {q_fetch:<6} | "
+            f"ParseQ: {q_parse:<4} | "
+            f"WriteQ: {q_write:<4} | "
+            f"Active Threads: {threading.active_count():<3}      "
+        )
+        sys.stdout.flush()
+        time.sleep(1)
 
 
 def main():
@@ -86,13 +84,35 @@ def main():
         t.start()
         threads.append(t)
 
-    print("\n [SYSTEM] Engine is running. Press Ctrl+C to stop.\n")
+    print("\n [SYSTEM] Engine is running. Press Ctrl+C to STOP gracefully.\n")
 
     try:
         monitor_loop()
     except KeyboardInterrupt:
-        print("\n [STOP] Crawler stopping...")
+        print("\n\n [STOP] Interrupted! Initiating graceful shutdown...")
+        print(" [STOP] Draining queues to save progress... (Press Ctrl+C again to FORCE QUIT)")
         
+        try:
+            while not FETCH_QUEUE.empty():
+                try:
+                    FETCH_QUEUE.get_nowait()
+                    FETCH_QUEUE.task_done()
+                except queue.Empty:
+                    break
+            
+            while not PARSE_QUEUE.empty() or not WRITE_QUEUE.empty():
+                q_parse = PARSE_QUEUE.qsize()
+                q_write = WRITE_QUEUE.qsize()
+                
+                sys.stdout.write(f"\r [STOP] Saving Data... ParseQ: {q_parse:<5} | WriteQ: {q_write:<5}   ")
+                sys.stdout.flush()
+                time.sleep(0.5)
+            
+            print("\n [STOP] All data saved successfully.")
+
+        except KeyboardInterrupt:
+            print("\n [STOP] FORCE QUIT DETECTED. Some data in memory may be lost.")
+
         print(" [STOP] Checkpointing databases (Merging WAL files)...")
         try:
             for db_path in [config.DB_CRAWL, config.DB_STORAGE, config.DB_SEARCH]:
